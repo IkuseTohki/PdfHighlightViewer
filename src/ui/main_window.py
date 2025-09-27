@@ -13,10 +13,13 @@ class MainWindow:
         self.root.title("PDF Highlight Viewer")
         self.root.geometry("1200x800")
 
+        # --- 状態変数 ---
         self.doc = None
         self.highlights = []
-        self.page_images = []  # PhotoImageオブジェクトのガベージコレクションを防ぐ
+        self.page_images = []
         self.current_page_num = -1
+        self.current_highlight_rect = None
+        self.scale = 1.0
 
         self._setup_ui()
 
@@ -57,8 +60,22 @@ class MainWindow:
         viewer_frame = ttk.Frame(content_frame, padding=5)
         content_frame.add(viewer_frame, weight=4)
 
-        viewer_label = ttk.Label(viewer_frame, text="PDFプレビュー:")
-        viewer_label.pack(anchor=tk.W)
+        # --- プレビューとズームコントロール --- #
+        preview_controls_frame = ttk.Frame(viewer_frame)
+        preview_controls_frame.pack(fill=tk.X)
+
+        viewer_label = ttk.Label(preview_controls_frame, text="PDFプレビュー:")
+        viewer_label.pack(side=tk.LEFT, anchor=tk.W)
+
+        zoom_frame = ttk.Frame(preview_controls_frame)
+        zoom_frame.pack(side=tk.LEFT, padx=20)
+
+        zoom_out_btn = ttk.Button(zoom_frame, text="-", command=self.zoom_out, width=2)
+        zoom_out_btn.pack(side=tk.LEFT, padx=5)
+        self.scale_label = ttk.Label(zoom_frame, text=f"{self.scale*100:.0f}%")
+        self.scale_label.pack(side=tk.LEFT)
+        zoom_in_btn = ttk.Button(zoom_frame, text="+", command=self.zoom_in, width=2)
+        zoom_in_btn.pack(side=tk.LEFT, padx=5)
 
         canvas_container = ttk.Frame(viewer_frame)
         canvas_container.pack(fill=tk.BOTH, expand=True, pady=(5,0))
@@ -94,12 +111,13 @@ class MainWindow:
             self.lbl_filepath.config(text=f"エラー: {e}")
 
     def _reset_state(self):
-        """アプリケーションの状態をリセットする。"""
         self.listbox.delete(0, tk.END)
         self.canvas.delete("all")
         self.highlights = []
         self.page_images = []
         self.current_page_num = -1
+        self.current_highlight_rect = None
+        self.scale = 1.0
         if self.doc:
             self.doc.close()
 
@@ -117,36 +135,51 @@ class MainWindow:
         
         if 0 <= selected_index < len(self.highlights):
             page_num, rect = self.highlights[selected_index]
+            self.current_highlight_rect = rect
             self.show_page(page_num, highlight_rect=rect)
 
     def show_page(self, page_num, highlight_rect=None):
         if not self.doc or not (0 <= page_num < self.doc.page_count):
             return
 
-        # ページが同じ場合は再描画しない（ハイライトの更新のみ）
-        if self.current_page_num != page_num:
-            self.current_page_num = page_num
-            page = self.doc[page_num]
-            img, photo = renderer.render_page_to_image(page)
-            
-            self.page_images.append(photo) # 参照を保持
+        self.current_page_num = page_num
+        page = self.doc[page_num]
+        img, photo = renderer.render_page_to_image(page, scale=self.scale)
+        
+        self.page_images.append(photo)
 
-            self.canvas.delete("all")
-            self.canvas.create_image(0, 0, anchor=tk.NW, image=photo)
-            self.canvas.config(scrollregion=self.canvas.bbox(tk.ALL))
+        self.canvas.delete("all")
+        self.canvas.create_image(0, 0, anchor=tk.NW, image=photo)
+        self.canvas.config(scrollregion=self.canvas.bbox(tk.ALL))
 
-        # 既存のハイライト枠を削除してから新しい枠を描画
-        self.canvas.delete("highlight")
         if highlight_rect:
             self.canvas.create_rectangle(
-                highlight_rect.x0,
-                highlight_rect.y0,
-                highlight_rect.x1,
-                highlight_rect.y1,
+                highlight_rect.x0 * self.scale,
+                highlight_rect.y0 * self.scale,
+                highlight_rect.x1 * self.scale,
+                highlight_rect.y1 * self.scale,
                 outline="red",
                 width=3,
                 tags="highlight"
             )
-            # 選択箇所ができるだけ画面中央に来るようにスクロール
             page_height = self.canvas.bbox(tk.ALL)[3]
-            self.canvas.yview_moveto(highlight_rect.y0 / page_height)
+            if page_height > 0:
+                self.canvas.yview_moveto((highlight_rect.y0 * self.scale) / page_height)
+
+    def zoom_in(self):
+        """表示倍率を上げて再描画する。"""
+        self.scale += 0.1
+        self.scale_label.config(text=f"{self.scale*100:.0f}%")
+        self.show_page(self.current_page_num, highlight_rect=self.current_highlight_rect)
+
+    def zoom_out(self):
+        """表示倍率を下げて再描画する。"""
+        if self.scale > 0.2: # 10%以下にはしない
+            self.scale -= 0.1
+            self.scale_label.config(text=f"{self.scale*100:.0f}%")
+            self.show_page(self.current_page_num, highlight_rect=self.current_highlight_rect)
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = MainWindow(root)
+    root.mainloop()
