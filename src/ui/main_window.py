@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import fitz
 
-from config.settings import ColorSettings
+from config.settings import AppSettings
 from pdf import extractor, renderer
 
 class MainWindow:
@@ -21,9 +21,10 @@ class MainWindow:
         self.current_page_num = -1
         self.current_highlight_rect = None
         self.scale = 1.0
-        self.color_settings = ColorSettings() # 設定を読み込む
+        self.app_settings = AppSettings() # 設定を読み込む
 
         self._setup_ui()
+        self._apply_styles()
 
     def _setup_ui(self):
         """GUIウィジェットの初期化と配置を行う。"""
@@ -45,8 +46,8 @@ class MainWindow:
         list_frame = ttk.Frame(content_frame, padding=5)
         content_frame.add(list_frame, weight=1)
 
-        list_label = ttk.Label(list_frame, text="検出された領域:")
-        list_label.pack(anchor=tk.W)
+        self.list_label = ttk.Label(list_frame, text="検出された領域:")
+        self.list_label.pack(anchor=tk.W)
         
         listbox_container = ttk.Frame(list_frame)
         listbox_container.pack(fill=tk.BOTH, expand=True, pady=(5,0))
@@ -65,18 +66,18 @@ class MainWindow:
         preview_controls_frame = ttk.Frame(viewer_frame)
         preview_controls_frame.pack(fill=tk.X)
 
-        viewer_label = ttk.Label(preview_controls_frame, text="PDFプレビュー:")
-        viewer_label.pack(side=tk.LEFT, anchor=tk.W)
+        self.viewer_label = ttk.Label(preview_controls_frame, text="PDFプレビュー:")
+        self.viewer_label.pack(side=tk.LEFT, anchor=tk.W)
 
         zoom_frame = ttk.Frame(preview_controls_frame)
         zoom_frame.pack(side=tk.LEFT, padx=20)
 
-        zoom_out_btn = ttk.Button(zoom_frame, text="-", command=self.zoom_out, width=2)
-        zoom_out_btn.pack(side=tk.LEFT, padx=5)
+        self.zoom_out_btn = ttk.Button(zoom_frame, text="-", command=self.zoom_out, width=2)
+        self.zoom_out_btn.pack(side=tk.LEFT, padx=5)
         self.scale_label = ttk.Label(zoom_frame, text=f"{self.scale*100:.0f}%")
         self.scale_label.pack(side=tk.LEFT)
-        zoom_in_btn = ttk.Button(zoom_frame, text="+", command=self.zoom_in, width=2)
-        zoom_in_btn.pack(side=tk.LEFT, padx=5)
+        self.zoom_in_btn = ttk.Button(zoom_frame, text="+", command=self.zoom_in, width=2)
+        self.zoom_in_btn.pack(side=tk.LEFT, padx=5)
 
         canvas_container = ttk.Frame(viewer_frame)
         canvas_container.pack(fill=tk.BOTH, expand=True, pady=(5,0))
@@ -89,6 +90,18 @@ class MainWindow:
         self.canvas_vsb.pack(side=tk.RIGHT, fill=tk.Y)
         self.canvas_hsb.pack(side=tk.BOTTOM, fill=tk.X)
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+    def _apply_styles(self):
+        """設定に基づいてUIのスタイルを適用する。"""
+        font_size = self.app_settings.font_size
+        default_font = ("TkDefaultFont", font_size)
+        
+        style = ttk.Style()
+        style.configure(".", font=default_font) # すべてのttkウィジェットに適用
+        
+        # 個別に設定が必要なウィジェット
+        self.listbox.config(font=default_font)
+        self.scale_label.config(font=default_font)
 
     def open_pdf_file(self):
         filepath = filedialog.askopenfilename(
@@ -103,7 +116,7 @@ class MainWindow:
 
         try:
             self.doc = fitz.open(filepath)
-            self.highlights = extractor.extract_colored_regions(self.doc, self.color_settings)
+            self.highlights = extractor.extract_colored_regions(self.doc, self.app_settings)
             self._populate_listbox()
             if self.doc.page_count > 0:
                 self.show_page(0)
@@ -177,4 +190,3 @@ class MainWindow:
             self.scale -= 0.1
             self.scale_label.config(text=f"{self.scale*100:.0f}%")
             self.show_page(self.current_page_num, highlight_rect=self.current_highlight_rect)
-
