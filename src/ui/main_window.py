@@ -1,3 +1,5 @@
+"""アプリケーションのメインウィンドウとUIの振る舞いを定義します。"""
+
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import fitz
@@ -6,10 +8,14 @@ from config.settings import AppSettings
 from pdf import extractor, renderer
 
 class MainWindow:
-    """
-    アプリケーションのメインウィンドウとUIロジックを管理する。
-    """
+    """アプリケーションのメインウィンドウとUIロジックを管理するクラス。"""
+
     def __init__(self, root):
+        """MainWindowを初期化します。
+
+        Args:
+            root (tk.Tk): Tkinterのルートウィンドウ。
+        """
         self.root = root
         self.root.title("PDF Highlight Viewer")
         self.root.geometry("1200x800")
@@ -17,17 +23,17 @@ class MainWindow:
         # --- 状態変数 ---
         self.doc = None
         self.highlights = []
-        self.page_images = []
+        self.page_images = [] # PhotoImageオブジェクトのガベージコレクションを防ぐための参照保持リスト
         self.current_page_num = -1
         self.current_highlight_rect = None
         self.scale = 1.0
-        self.app_settings = AppSettings() # 設定を読み込む
+        self.app_settings = AppSettings() # setting.iniから設定を読み込む
 
         self._setup_ui()
         self._apply_styles()
 
     def _setup_ui(self):
-        """GUIウィジェットの初期化と配置を行う。"""
+        """GUIウィジェットの初期化と配置を行います。"""
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
@@ -40,9 +46,11 @@ class MainWindow:
         self.lbl_filepath = ttk.Label(top_frame, text="PDFファイルが選択されていません", anchor=tk.W)
         self.lbl_filepath.pack(side=tk.LEFT, padx=10, fill=tk.X, expand=True)
 
+        # PanedWindowで左右のペインをリサイズ可能にする
         content_frame = ttk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
         content_frame.pack(fill=tk.BOTH, expand=True)
 
+        # --- 左ペイン (検出リスト) ---
         list_frame = ttk.Frame(content_frame, padding=5)
         content_frame.add(list_frame, weight=1)
 
@@ -60,6 +68,7 @@ class MainWindow:
         self.listbox_sby.pack(side=tk.RIGHT, fill=tk.Y)
         self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
+        # --- 右ペイン (PDFビューア) ---
         viewer_frame = ttk.Frame(content_frame, padding=5)
         content_frame.add(viewer_frame, weight=4)
 
@@ -69,6 +78,7 @@ class MainWindow:
         self.viewer_label = ttk.Label(preview_controls_frame, text="PDFプレビュー:")
         self.viewer_label.pack(side=tk.LEFT, anchor=tk.W)
 
+        # ズームコントロール
         zoom_frame = ttk.Frame(preview_controls_frame)
         zoom_frame.pack(side=tk.LEFT, padx=20)
 
@@ -79,6 +89,7 @@ class MainWindow:
         self.zoom_in_btn = ttk.Button(zoom_frame, text="+", command=self.zoom_in, width=2)
         self.zoom_in_btn.pack(side=tk.LEFT, padx=5)
 
+        # PDF表示用キャンバス
         canvas_container = ttk.Frame(viewer_frame)
         canvas_container.pack(fill=tk.BOTH, expand=True, pady=(5,0))
 
@@ -92,18 +103,19 @@ class MainWindow:
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
     def _apply_styles(self):
-        """設定に基づいてUIのスタイルを適用する。"""
+        """設定ファイルに基づいてUIのスタイル（フォントサイズなど）を適用します。"""
         font_size = self.app_settings.font_size
         default_font = ("TkDefaultFont", font_size)
         
         style = ttk.Style()
-        style.configure(".", font=default_font) # すべてのttkウィジェットに適用
+        style.configure(".", font=default_font) # すべてのttkウィジェットのデフォルトフォントを設定
         
-        # 個別に設定が必要なウィジェット
+        # ttkではない標準ウィジェットや、個別に設定が必要なウィジェット
         self.listbox.config(font=default_font)
         self.scale_label.config(font=default_font)
 
     def open_pdf_file(self):
+        """ファイルダイアログを開き、選択されたPDFの処理を開始します。"""
         filepath = filedialog.askopenfilename(
             title="PDFファイルを選択",
             filetypes=[("PDF files", "*.pdf")]
@@ -125,6 +137,7 @@ class MainWindow:
             self.lbl_filepath.config(text=f"エラー: {e}")
 
     def _reset_state(self):
+        """新しいPDFを開く前に、アプリケーションの状態をリセットします。"""
         self.listbox.delete(0, tk.END)
         self.canvas.delete("all")
         self.highlights = []
@@ -136,11 +149,13 @@ class MainWindow:
             self.doc.close()
 
     def _populate_listbox(self):
+        """検出した領域のリストをリストボックスに表示します。"""
         self.listbox.delete(0, tk.END)
         for i, (page_num, rect) in enumerate(self.highlights):
             self.listbox.insert(tk.END, f"領域 {i + 1} (Page {page_num + 1})")
 
     def on_list_select(self, event):
+        """リストボックスの項目が選択されたときに呼び出されるイベントハンドラです。"""
         selection_indices = self.listbox.curselection()
         if not selection_indices:
             return
@@ -153,20 +168,30 @@ class MainWindow:
             self.show_page(page_num, highlight_rect=rect)
 
     def show_page(self, page_num, highlight_rect=None):
+        """指定されたページをキャンバスに表示し、指定領域をハイライトします。
+
+        Args:
+            page_num (int): 表示するページ番号。
+            highlight_rect (fitz.Rect, optional): ハイライト表示する矩形領域。
+                Defaults to None.
+        """
         if not self.doc or not (0 <= page_num < self.doc.page_count):
             return
 
         self.current_page_num = page_num
         page = self.doc[page_num]
+        # ページを指定倍率で画像にレンダリング
         img, photo = renderer.render_page_to_image(page, scale=self.scale)
         
-        self.page_images.append(photo)
+        self.page_images.append(photo) # 参照を保持
 
         self.canvas.delete("all")
         self.canvas.create_image(0, 0, anchor=tk.NW, image=photo)
         self.canvas.config(scrollregion=self.canvas.bbox(tk.ALL))
 
+        # ハイライト用の赤枠を描画
         if highlight_rect:
+            # 矩形の座標も表示倍率に合わせてスケールさせる
             self.canvas.create_rectangle(
                 highlight_rect.x0 * self.scale,
                 highlight_rect.y0 * self.scale,
@@ -174,19 +199,23 @@ class MainWindow:
                 highlight_rect.y1 * self.scale,
                 outline="red",
                 width=3,
-                tags="highlight"
+                tags="highlight" # タグを付けておくと後で削除しやすい
             )
+            # 選択箇所が画面内に表示されるようにスクロール
             page_height = self.canvas.bbox(tk.ALL)[3]
             if page_height > 0:
                 self.canvas.yview_moveto((highlight_rect.y0 * self.scale) / page_height)
 
     def zoom_in(self):
+        """表示倍率を上げて再描画します。"""
         self.scale += 0.1
         self.scale_label.config(text=f"{self.scale*100:.0f}%")
         self.show_page(self.current_page_num, highlight_rect=self.current_highlight_rect)
 
     def zoom_out(self):
+        """表示倍率を下げて再描画します。"""
+        # 20%未満にはしない
         if self.scale > 0.2:
             self.scale -= 0.1
             self.scale_label.config(text=f"{self.scale*100:.0f}%")
-            self.show_page(self.current_page_num, highlight_rect=self.current_highlight_rect)
+            self.show_page(self.current_page_num, highlight_highlight_rect=self.current_highlight_rect)
