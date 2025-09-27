@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import fitz
 
+from config.settings import ColorSettings
 from pdf import extractor, renderer
 
 class MainWindow:
@@ -20,6 +21,7 @@ class MainWindow:
         self.current_page_num = -1
         self.current_highlight_rect = None
         self.scale = 1.0
+        self.color_settings = ColorSettings() # 設定を読み込む
 
         self._setup_ui()
 
@@ -43,7 +45,7 @@ class MainWindow:
         list_frame = ttk.Frame(content_frame, padding=5)
         content_frame.add(list_frame, weight=1)
 
-        list_label = ttk.Label(list_frame, text="検出された黄色い領域:")
+        list_label = ttk.Label(list_frame, text="検出された領域:")
         list_label.pack(anchor=tk.W)
         
         listbox_container = ttk.Frame(list_frame)
@@ -60,7 +62,6 @@ class MainWindow:
         viewer_frame = ttk.Frame(content_frame, padding=5)
         content_frame.add(viewer_frame, weight=4)
 
-        # --- プレビューとズームコントロール --- #
         preview_controls_frame = ttk.Frame(viewer_frame)
         preview_controls_frame.pack(fill=tk.X)
 
@@ -102,7 +103,7 @@ class MainWindow:
 
         try:
             self.doc = fitz.open(filepath)
-            self.highlights = extractor.extract_yellow_regions(self.doc)
+            self.highlights = extractor.extract_colored_regions(self.doc, self.color_settings)
             self._populate_listbox()
             if self.doc.page_count > 0:
                 self.show_page(0)
@@ -167,19 +168,13 @@ class MainWindow:
                 self.canvas.yview_moveto((highlight_rect.y0 * self.scale) / page_height)
 
     def zoom_in(self):
-        """表示倍率を上げて再描画する。"""
         self.scale += 0.1
         self.scale_label.config(text=f"{self.scale*100:.0f}%")
         self.show_page(self.current_page_num, highlight_rect=self.current_highlight_rect)
 
     def zoom_out(self):
-        """表示倍率を下げて再描画する。"""
-        if self.scale > 0.2: # 10%以下にはしない
+        if self.scale > 0.2:
             self.scale -= 0.1
             self.scale_label.config(text=f"{self.scale*100:.0f}%")
             self.show_page(self.current_page_num, highlight_rect=self.current_highlight_rect)
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = MainWindow(root)
-    root.mainloop()
