@@ -54,3 +54,4 @@ class AppSettings:
 
         # --- エクスポート設定の読み込み ---
         self.pdf_export_mode = config.get("Export", "PdfExportMode", fallback="one_page")
+        self.excel_image_scale = config.getfloat("Export", "ExcelImageScale", fallback=2.0)
