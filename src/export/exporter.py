@@ -10,6 +10,8 @@ import io
 import openpyxl
 from openpyxl.drawing.image import Image as OpenpyxlImage
 
+from .formats import ExportFormat
+
 class Exporter:
     """エクスポート処理を実行するクラス。"""
 
@@ -27,35 +29,37 @@ class Exporter:
         self.listbox = listbox
         self.app_settings = app_settings
 
-    def export_selected(self, export_format):
+    def export_selected(self, export_format: ExportFormat):
         """選択されたハイライト領域を、指定された形式でエクスポートします。"""
         if not self.doc or not self.highlights:
             messagebox.showwarning("エクスポート不可", "エクスポート対象のPDFが開かれていません。")
             return
 
-        if export_format == "png":
+        if export_format is ExportFormat.PNG:
             self._export_selected_highlight_as_image()
-        elif export_format == "pdf":
+        elif export_format is ExportFormat.PDF:
             self._export_selected_highlight_as_pdf()
-        elif export_format == "excel":
+        elif export_format is ExportFormat.EXCEL:
             self._export_selected_highlight_as_excel()
         else:
-            messagebox.showinfo("未実装", f"{export_format}形式でのエクスポートはまだ実装されていません。")
+            # このルートは通常通らないはず
+            messagebox.showerror("内部エラー", f"未対応のエクスポート形式です: {export_format}")
 
-    def export_all(self, export_format):
+    def export_all(self, export_format: ExportFormat):
         """すべてのハイライト領域を、指定された形式でエクスポートします。"""
         if not self.doc or not self.highlights:
             messagebox.showwarning("エクスポート不可", "エクスポート対象のPDFが開かれていません。")
             return
 
-        if export_format == "png":
+        if export_format is ExportFormat.PNG:
             self._export_all_highlights_as_image()
-        elif export_format == "pdf":
+        elif export_format is ExportFormat.PDF:
             self._export_all_highlights_as_pdf()
-        elif export_format == "excel":
+        elif export_format is ExportFormat.EXCEL:
             self._export_all_highlights_as_excel()
         else:
-            messagebox.showinfo("未実装", f"{export_format}形式でのエクスポートはまだ実装されていません。")
+            # このルートは通常通らないはず
+            messagebox.showerror("内部エラー", f"未対応のエクスポート形式です: {export_format}")
 
     # --- Private Image Export Methods ---
     def _export_selected_highlight_as_image(self):

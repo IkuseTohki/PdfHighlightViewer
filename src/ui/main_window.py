@@ -7,6 +7,7 @@ import fitz
 from config.settings import AppSettings
 from pdf import extractor, renderer
 from export.exporter import Exporter
+from export.formats import ExportFormat
 
 class MainWindow:
     """アプリケーションのメインウィンドウとUIロジックを管理するクラス。"""
@@ -29,7 +30,7 @@ class MainWindow:
         self.current_highlight_rect = None
         self.scale = 1.0
         self.app_settings = AppSettings() # setting.iniから設定を読み込む
-        self.export_format = tk.StringVar(value="png") # エクスポート形式
+        self.export_format = tk.StringVar(value=ExportFormat.PNG.value) # エクスポート形式
 
         self._setup_ui()
         self._apply_styles()
@@ -53,9 +54,9 @@ class MainWindow:
 
         format_menu = tk.Menu(export_menu, tearoff=0)
         export_menu.add_cascade(label="エクスポート形式", menu=format_menu)
-        format_menu.add_radiobutton(label="画像 (PNG)", variable=self.export_format, value="png")
-        format_menu.add_radiobutton(label="PDF", variable=self.export_format, value="pdf")
-        format_menu.add_radiobutton(label="Excel", variable=self.export_format, value="excel")
+        format_menu.add_radiobutton(label="画像 (PNG)", variable=self.export_format, value=ExportFormat.PNG.value)
+        format_menu.add_radiobutton(label="PDF", variable=self.export_format, value=ExportFormat.PDF.value)
+        format_menu.add_radiobutton(label="Excel", variable=self.export_format, value=ExportFormat.EXCEL.value)
 
         export_menu.add_separator()
         export_menu.add_command(label="選択中のハイライトをエクスポート...", command=self.export_selected_highlight)
@@ -236,15 +237,31 @@ class MainWindow:
             if page_height > 0:
                 self.canvas.yview_moveto((highlight_rect.y0 * self.scale) / page_height)
 
+    def _get_export_format_enum(self) -> ExportFormat | None:
+        """現在のエクスポート形式をEnumとして取得します。不正な場合はエラー表示してNoneを返します。"""
+        try:
+            return ExportFormat(self.export_format.get())
+        except ValueError:
+            messagebox.showerror("内部エラー", "不明なエクスポート形式が選択されています。")
+            return None
+
     def export_selected_highlight(self):
         """選択されたハイライトのエクスポート処理をExporterに委譲します。"""
+        export_format_enum = self._get_export_format_enum()
+        if not export_format_enum:
+            return
+
         exporter = Exporter(self.doc, self.highlights, self.listbox, self.app_settings)
-        exporter.export_selected(self.export_format.get())
+        exporter.export_selected(export_format_enum)
 
     def export_all_highlights(self):
         """すべてのハイライトのエクスポート処理をExporterに委譲します。"""
+        export_format_enum = self._get_export_format_enum()
+        if not export_format_enum:
+            return
+
         exporter = Exporter(self.doc, self.highlights, self.listbox, self.app_settings)
-        exporter.export_all(self.export_format.get())
+        exporter.export_all(export_format_enum)
 
     def zoom_in(self):
         """表示倍率を上げて再描画します。"""
