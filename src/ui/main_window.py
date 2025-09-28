@@ -3,6 +3,7 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import fitz
+from typing import Optional
 
 from config.settings import AppSettings
 from pdf import extractor, renderer
@@ -237,7 +238,7 @@ class MainWindow:
             if page_height > 0:
                 self.canvas.yview_moveto((highlight_rect.y0 * self.scale) / page_height)
 
-    def _get_export_format_enum(self) -> ExportFormat | None:
+    def _get_export_format_enum(self) -> Optional[ExportFormat]:
         """現在のエクスポート形式をEnumとして取得します。不正な場合はエラー表示してNoneを返します。"""
         try:
             return ExportFormat(self.export_format.get())
