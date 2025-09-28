@@ -3,6 +3,9 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import fitz
+import os
+from collections import defaultdict
+from PIL import Image, ImageDraw
 
 from config.settings import AppSettings
 from pdf import extractor, renderer
@@ -28,18 +31,46 @@ class MainWindow:
         self.current_highlight_rect = None
         self.scale = 1.0
         self.app_settings = AppSettings() # setting.iniから設定を読み込む
+        self.export_format = tk.StringVar(value="png") # エクスポート形式
 
         self._setup_ui()
         self._apply_styles()
 
     def _setup_ui(self):
         """GUIウィジェットの初期化と配置を行います。"""
+        # --- メニューバーの作成 ---
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+
+        # ファイルメニュー
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="ファイル", menu=file_menu)
+        file_menu.add_command(label="PDFを開く...", command=self.open_pdf_file)
+        file_menu.add_separator()
+        file_menu.add_command(label="終了", command=self.root.quit)
+
+        # エクスポートメニュー
+        export_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="エクスポート", menu=export_menu)
+
+        format_menu = tk.Menu(export_menu, tearoff=0)
+        export_menu.add_cascade(label="エクスポート形式", menu=format_menu)
+        format_menu.add_radiobutton(label="画像 (PNG)", variable=self.export_format, value="png")
+        format_menu.add_radiobutton(label="PDF", variable=self.export_format, value="pdf", state=tk.DISABLED) # TODO: Implement
+        format_menu.add_radiobutton(label="Excel", variable=self.export_format, value="excel", state=tk.DISABLED) # TODO: Implement
+
+        export_menu.add_separator()
+        export_menu.add_command(label="選択中のハイライトをエクスポート...", command=self.export_selected_highlight)
+        export_menu.add_command(label="すべてのハイライトをエクスポート...", command=self.export_all_highlights)
+
+        # --- メインフレーム ---
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         top_frame = ttk.Frame(main_frame)
         top_frame.pack(fill=tk.X, pady=(0, 5))
 
+        # open_pdf_fileはメニューに移動したが、ボタンも残しておく
         self.btn_open = ttk.Button(top_frame, text="PDFを開く", command=self.open_pdf_file)
         self.btn_open.pack(side=tk.LEFT)
 
@@ -147,6 +178,7 @@ class MainWindow:
         self.scale = 1.0
         if self.doc:
             self.doc.close()
+            self.doc = None
 
     def _populate_listbox(self):
         """検出した領域のリストをリストボックスに表示します。"""
@@ -206,6 +238,111 @@ class MainWindow:
             if page_height > 0:
                 self.canvas.yview_moveto((highlight_rect.y0 * self.scale) / page_height)
 
+    def export_selected_highlight(self):
+        """選択されたハイライト領域を、指定された形式でエクスポートします。"""
+        if self.export_format.get() == "png":
+            self._export_selected_highlight_as_image()
+        else:
+            messagebox.showinfo("未実装", f"{self.export_format.get()}形式でのエクスポートはまだ実装されていません。")
+
+    def export_all_highlights(self):
+        """すべてのハイライト領域を、指定された形式でエクスポートします。"""
+        if self.export_format.get() == "png":
+            self._export_all_highlights_as_image()
+        else:
+            messagebox.showinfo("未実装", f"{self.export_format.get()}形式でのエクスポートはまだ実装されていません。")
+
+    def _export_selected_highlight_as_image(self):
+        """選択されたハイライト箇所を含むページ全体を画像としてエクスポートします。"""
+        selection_indices = self.listbox.curselection()
+        if not selection_indices:
+            messagebox.showwarning("エクスポート不可", "エクスポートする領域が選択されていません。")
+            return
+
+        selected_index = selection_indices[0]
+        if not (0 <= selected_index < len(self.highlights)):
+            return
+
+        page_num, rect = self.highlights[selected_index]
+
+        filepath = filedialog.asksaveasfilename(
+            title="ページ画像を保存",
+            defaultextension=".png",
+            filetypes=[("PNG Image", "*.png"), ("JPEG Image", "*.jpg")]
+        )
+        if not filepath:
+            return
+
+        try:
+            page = self.doc[page_num]
+            dpi = 300
+            zoom = dpi / 72
+            mat = fitz.Matrix(zoom, zoom)
+
+            # ページ全体を高解像度でレンダリング
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            draw = ImageDraw.Draw(img)
+
+            # 画像に合わせてハイライトの矩形座標をスケーリングして描画
+            highlight_rect_on_image = rect * mat
+            draw.rectangle(
+                (highlight_rect_on_image.x0, highlight_rect_on_image.y0, highlight_rect_on_image.x1, highlight_rect_on_image.y1),
+                outline="red",
+                width=5 # 枠線を太くする
+            )
+
+            img.save(filepath)
+            messagebox.showinfo("成功", f"ページ画像をエクスポートしました:\n{filepath}")
+        except Exception as e:
+            messagebox.showerror("エクスポートエラー", f"画像の保存中にエラーが発生しました:\n{e}")
+
+    def _export_all_highlights_as_image(self):
+        """すべてのハイライト箇所について、それぞれを含むページ全体を画像として保存します。"""
+        if not self.highlights:
+            messagebox.showwarning("エクスポート不可", "エクスポート対象の領域がありません。")
+            return
+
+        folder_path = filedialog.askdirectory(title="保存先のフォルダを選択")
+        if not folder_path:
+            return
+
+        try:
+            page_counters = defaultdict(int)
+            exported_count = 0
+            dpi = 300
+            zoom = dpi / 72
+            mat = fitz.Matrix(zoom, zoom)
+
+            for page_num, rect in self.highlights:
+                page_counters[page_num] += 1
+                counter = page_counters[page_num]
+                
+                filename = f"page-{page_num + 1}-{counter}.png"
+                filepath = os.path.join(folder_path, filename)
+                
+                page = self.doc[page_num]
+                
+                # ページ全体をレンダリング
+                pix = page.get_pixmap(matrix=mat, alpha=False)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                draw = ImageDraw.Draw(img)
+
+                # ハイライト矩形を描画
+                highlight_rect_on_image = rect * mat
+                draw.rectangle(
+                    (highlight_rect_on_image.x0, highlight_rect_on_image.y0, highlight_rect_on_image.x1, highlight_rect_on_image.y1),
+                    outline="red",
+                    width=5
+                )
+
+                img.save(filepath)
+                exported_count += 1
+            
+            messagebox.showinfo("成功", f"{exported_count}個のページ画像をエクスポートしました。\nフォルダ: {folder_path}")
+        except Exception as e:
+            messagebox.showerror("エクスポートエラー", f"エクスポート中にエラーが発生しました:\n{e}")
+
     def zoom_in(self):
         """表示倍率を上げて再描画します。"""
         self.scale += 0.1
@@ -214,8 +351,7 @@ class MainWindow:
 
     def zoom_out(self):
         """表示倍率を下げて再描画します。"""
-        # 20%未満にはしない
         if self.scale > 0.2:
             self.scale -= 0.1
             self.scale_label.config(text=f"{self.scale*100:.0f}%")
-            self.show_page(self.current_page_num, highlight_highlight_rect=self.current_highlight_rect)
+            self.show_page(self.current_page_num, highlight_rect=self.current_highlight_rect)
