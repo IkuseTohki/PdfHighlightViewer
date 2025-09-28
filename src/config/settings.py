@@ -51,3 +51,6 @@ class AppSettings:
 
         # --- UI設定の読み込み ---
         self.font_size = config.getint("UI", "font_size", fallback=10)
+
+        # --- エクスポート設定の読み込み ---
+        self.pdf_export_mode = config.get("Export", "PdfExportMode", fallback="one_page")

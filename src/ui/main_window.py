@@ -56,7 +56,7 @@ class MainWindow:
         format_menu = tk.Menu(export_menu, tearoff=0)
         export_menu.add_cascade(label="エクスポート形式", menu=format_menu)
         format_menu.add_radiobutton(label="画像 (PNG)", variable=self.export_format, value="png")
-        format_menu.add_radiobutton(label="PDF", variable=self.export_format, value="pdf", state=tk.DISABLED) # TODO: Implement
+        format_menu.add_radiobutton(label="PDF", variable=self.export_format, value="pdf")
         format_menu.add_radiobutton(label="Excel", variable=self.export_format, value="excel", state=tk.DISABLED) # TODO: Implement
 
         export_menu.add_separator()
@@ -240,17 +240,23 @@ class MainWindow:
 
     def export_selected_highlight(self):
         """選択されたハイライト領域を、指定された形式でエクスポートします。"""
-        if self.export_format.get() == "png":
+        export_format = self.export_format.get()
+        if export_format == "png":
             self._export_selected_highlight_as_image()
+        elif export_format == "pdf":
+            self._export_selected_highlight_as_pdf()
         else:
-            messagebox.showinfo("未実装", f"{self.export_format.get()}形式でのエクスポートはまだ実装されていません。")
+            messagebox.showinfo("未実装", f"{export_format}形式でのエクスポートはまだ実装されていません。")
 
     def export_all_highlights(self):
         """すべてのハイライト領域を、指定された形式でエクスポートします。"""
-        if self.export_format.get() == "png":
+        export_format = self.export_format.get()
+        if export_format == "png":
             self._export_all_highlights_as_image()
+        elif export_format == "pdf":
+            self._export_all_highlights_as_pdf()
         else:
-            messagebox.showinfo("未実装", f"{self.export_format.get()}形式でのエクスポートはまだ実装されていません。")
+            messagebox.showinfo("未実装", f"{export_format}形式でのエクスポートはまだ実装されていません。")
 
     def _export_selected_highlight_as_image(self):
         """選択されたハイライト箇所を含むページ全体を画像としてエクスポートします。"""
@@ -342,6 +348,86 @@ class MainWindow:
             messagebox.showinfo("成功", f"{exported_count}個のページ画像をエクスポートしました。\nフォルダ: {folder_path}")
         except Exception as e:
             messagebox.showerror("エクスポートエラー", f"エクスポート中にエラーが発生しました:\n{e}")
+
+    def _export_selected_highlight_as_pdf(self):
+        """選択されたハイライト箇所を含むページを、1ページのPDFとしてエクスポートします。"""
+        selection_indices = self.listbox.curselection()
+        if not selection_indices:
+            messagebox.showwarning("エクスポート不可", "エクスポートする領域が選択されていません。")
+            return
+
+        selected_index = selection_indices[0]
+        if not (0 <= selected_index < len(self.highlights)):
+            return
+
+        page_num, rect = self.highlights[selected_index]
+
+        filepath = filedialog.asksaveasfilename(
+            title="PDFとして保存",
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf")]
+        )
+        if not filepath:
+            return
+
+        try:
+            new_doc = fitz.open() # 新しいPDFを作成
+            new_doc.insert_pdf(self.doc, from_page=page_num, to_page=page_num)
+            new_page = new_doc[0]
+            new_page.draw_rect(rect, color=(1, 0, 0), width=1.5)
+            new_doc.save(filepath)
+            new_doc.close()
+            messagebox.showinfo("成功", f"PDFをエクスポートしました:\n{filepath}")
+        except Exception as e:
+            messagebox.showerror("エクスポートエラー", f"PDFの保存中にエラーが発生しました:\n{e}")
+
+    def _export_all_highlights_as_pdf(self):
+        """すべてのハイライト箇所を、設定に応じて1つのPDFにまとめてエクスポートします。"""
+        if not self.highlights:
+            messagebox.showwarning("エクスポート不可", "エクスポート対象の領域がありません。")
+            return
+
+        filepath = filedialog.asksaveasfilename(
+            title="PDFとして保存",
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf")]
+        )
+        if not filepath:
+            return
+
+        final_doc = fitz.open()
+        try:
+            if self.app_settings.pdf_export_mode == 'one_page': # A案
+                for page_num, rect in self.highlights:
+                    temp_doc = fitz.open()
+                    temp_doc.insert_pdf(self.doc, from_page=page_num, to_page=page_num)
+                    new_page = temp_doc[0]
+                    new_page.draw_rect(rect, color=(1, 0, 0), width=1.5)
+                    final_doc.insert_pdf(temp_doc)
+                    temp_doc.close()
+            
+            elif self.app_settings.pdf_export_mode == 'merge': # B案
+                highlights_by_page = defaultdict(list)
+                for page_num, rect in self.highlights:
+                    highlights_by_page[page_num].append(rect)
+                
+                sorted_pages = sorted(highlights_by_page.keys())
+
+                for page_num in sorted_pages:
+                    temp_doc = fitz.open()
+                    temp_doc.insert_pdf(self.doc, from_page=page_num, to_page=page_num)
+                    new_page = temp_doc[0]
+                    for rect in highlights_by_page[page_num]:
+                        new_page.draw_rect(rect, color=(1, 0, 0), width=1.5)
+                    final_doc.insert_pdf(temp_doc)
+                    temp_doc.close()
+
+            final_doc.save(filepath)
+            messagebox.showinfo("成功", f"{len(final_doc)}ページのPDFをエクスポートしました。\n{filepath}")
+        except Exception as e:
+            messagebox.showerror("エクスポートエラー", f"PDFのエクスポート中にエラーが発生しました:\n{e}")
+        finally:
+            final_doc.close()
 
     def zoom_in(self):
         """表示倍率を上げて再描画します。"""
