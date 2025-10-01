@@ -1,4 +1,3 @@
-
 """アプリケーションのメインウィンドウとUIの振る舞いを定義します。"""
 
 import tkinter as tk
@@ -26,7 +25,9 @@ class MainWindow:
         self.root.geometry("1200x800")
 
         # --- 状態変数 ---
-        self.doc = None
+        self.doc: Optional[fitz.Document] = None
+        self.current_filepath: Optional[str] = None
+        self.filepath_var = tk.StringVar() # UIのEntryウィジェットと連動
         self.highlights = []
         self.page_images = []
         self.current_page_num = -1
@@ -34,6 +35,7 @@ class MainWindow:
         self.scale = 1.0
         self.app_settings = AppSettings()
         self.export_format = tk.StringVar(value=ExportFormat.PNG.value)
+        self.extraction_mode = tk.StringVar(value="highlight")  # 抽出モード（"highlight" or "text"）
 
         # UIの構築をUIBuilderに委譲
         self.ui = UIBuilder(self.root, self)
@@ -52,8 +54,8 @@ class MainWindow:
         self.ui.listbox.config(font=default_font)
         self.ui.scale_label.config(font=default_font)
 
-    def open_pdf_file(self):
-        """ファイルダイアログを開き、選択されたPDFの処理を開始します。"""
+    def select_pdf_file(self):
+        """ファイルダイアログを開き、処理対象のPDFファイルを選択します。"""
         filepath = filedialog.askopenfilename(
             title="PDFファイルを選択",
             filetypes=[("PDF files", "*.pdf")]
@@ -61,23 +63,54 @@ class MainWindow:
         if not filepath:
             return
 
+        # 新しいファイルが選択されたので、現在の表示をリセット
         self._reset_state()
-        self.ui.lbl_filepath.config(text=filepath)
+        self.root.update_idletasks() # リセットをUIに即時反映
+        self.filepath_var.set(filepath)
+
+
+    def run_extraction(self):
+        """現在選択されているPDFファイルに対して抽出処理を実行します。"""
+        self.current_filepath = self.filepath_var.get()
+        if not self.current_filepath:
+            messagebox.showwarning("ファイル未選択", "ファイルパスを入力するか、「参照...」ボタンからPDFファイルを選択してください。")
+            return
+
+        # 抽出の都度、前回の結果をクリアし、UIに即時反映
+        self._reset_state()
+        self.root.update_idletasks()
 
         try:
-            self.doc = fitz.open(filepath)
-            self.highlights = extractor.extract_colored_regions(self.doc, self.app_settings)
+            self.doc = fitz.open(self.current_filepath)
+
+            mode = self.extraction_mode.get()
+            if mode == "highlight":
+                self.highlights = extractor.extract_colored_regions(self.doc, self.app_settings)
+            elif mode == "text":
+                self.highlights = extractor.extract_colored_text_regions(self.doc, self.app_settings)
+            else:
+                self.highlights = []
+                messagebox.showerror("内部エラー", f"不明な抽出モードです: {mode}")
+
+            if not self.highlights:
+                messagebox.showinfo("抽出結果", "指定された条件に一致する領域は見つかりませんでした。")
+
             self._populate_listbox()
+            
+            # ページを表示
             if self.doc.page_count > 0:
-                self.show_page(0)
+                # 最初のハイライトがあればそのページを表示
+                if self.highlights:
+                    self.show_page(self.highlights[0][0])
+
         except Exception as e:
             messagebox.showerror("エラー", f"PDFの処理中にエラーが発生しました:\n{e}")
-            self.ui.lbl_filepath.config(text=f"エラー: {e}")
+            self.filepath_var.set(f"エラー: {e}")
+
 
     def _reset_state(self):
-        """新しいPDFを開く前に、アプリケーションの状態をリセットします。"""
+        """抽出結果やプレビューなど、アプリケーションの状態をリセットします。"""
         self.ui.listbox.delete(0, tk.END)
-        self.ui.canvas.delete("all")
         self.highlights = []
         self.page_images = []
         self.current_page_num = -1
@@ -86,6 +119,7 @@ class MainWindow:
         if self.doc:
             self.doc.close()
             self.doc = None
+        # self.current_filepath, self.filepath_var はここではリセットしない
 
     def _populate_listbox(self):
         """検出した領域のリストをリストボックスに表示します。"""
@@ -109,6 +143,8 @@ class MainWindow:
     def show_page(self, page_num, highlight_rect=None):
         """指定されたページをキャンバスに表示し、指定領域をハイライトします。"""
         if not self.doc or not (0 <= page_num < self.doc.page_count):
+            # PDFが開かれていない場合、キャンバスをクリアする
+            self.ui.canvas.delete("all")
             return
 
         self.current_page_num = page_num
@@ -131,9 +167,14 @@ class MainWindow:
                 width=3,
                 tags="highlight"
             )
+            # スクロール位置の計算と移動
+            canvas_height = self.ui.canvas.winfo_height()
             page_height = self.ui.canvas.bbox(tk.ALL)[3]
             if page_height > 0:
-                self.ui.canvas.yview_moveto((highlight_rect.y0 * self.scale) / page_height)
+                # ハイライトが中央に来るようにスクロール
+                scroll_pos = (highlight_rect.y0 * self.scale - canvas_height / 2) / page_height
+                self.ui.canvas.yview_moveto(max(0, scroll_pos))
+
 
     def _get_export_format_enum(self) -> Optional[ExportFormat]:
         """現在のエクスポート形式をEnumとして取得します。不正な場合はエラー表示してNoneを返します。"""
@@ -163,12 +204,14 @@ class MainWindow:
 
     def zoom_in(self):
         """表示倍率を上げて再描画します。"""
+        if not self.doc: return
         self.scale += 0.1
         self.ui.scale_label.config(text=f"{self.scale*100:.0f}%")
         self.show_page(self.current_page_num, highlight_rect=self.current_highlight_rect)
 
     def zoom_out(self):
         """表示倍率を下げて再描画します。"""
+        if not self.doc: return
         if self.scale > 0.2:
             self.scale -= 0.1
             self.ui.scale_label.config(text=f"{self.scale*100:.0f}%")

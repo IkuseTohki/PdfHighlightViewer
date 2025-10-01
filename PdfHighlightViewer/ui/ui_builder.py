@@ -26,7 +26,8 @@ class UIBuilder:
 
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="ファイル", menu=file_menu)
-        file_menu.add_command(label="PDFを開く...", command=self.controller.open_pdf_file)
+        file_menu.add_command(label="PDFファイルを選択...", command=self.controller.select_pdf_file)
+        file_menu.add_command(label="抽出を実行", command=self.controller.run_extraction)
         file_menu.add_separator()
         file_menu.add_command(label="終了", command=self.root.quit)
 
@@ -40,8 +41,8 @@ class UIBuilder:
         format_menu.add_radiobutton(label="Excel", variable=self.controller.export_format, value=ExportFormat.EXCEL.value)
 
         export_menu.add_separator()
-        export_menu.add_command(label="選択中のハイライトをエクスポート...", command=self.controller.export_selected_highlight)
-        export_menu.add_command(label="すべてのハイライトをエクスポート...", command=self.controller.export_all_highlights)
+        export_menu.add_command(label="選択中の領域をエクスポート...", command=self.controller.export_selected_highlight)
+        export_menu.add_command(label="すべての領域をエクスポート...", command=self.controller.export_all_highlights)
 
         # --- メインフレーム ---
         main_frame = ttk.Frame(self.root)
@@ -50,11 +51,32 @@ class UIBuilder:
         top_frame = ttk.Frame(main_frame)
         top_frame.pack(fill=tk.X, pady=(0, 5))
 
-        self.btn_open = ttk.Button(top_frame, text="PDFを開く", command=self.controller.open_pdf_file)
-        self.btn_open.pack(side=tk.LEFT)
+        # --- 抽出対象の選択 (左端) ---
+        mode_frame = ttk.Labelframe(top_frame, text="抽出対象")
+        mode_frame.pack(side=tk.LEFT, padx=(0, 5))
 
-        self.lbl_filepath = ttk.Label(top_frame, text="PDFファイルが選択されていません", anchor=tk.W)
-        self.lbl_filepath.pack(side=tk.LEFT, padx=10, fill=tk.X, expand=True)
+        self.radio_highlight = ttk.Radiobutton(
+            mode_frame, text="ハイライト", variable=self.controller.extraction_mode, value="highlight"
+        )
+        self.radio_highlight.pack(side=tk.LEFT, padx=5, pady=2)
+
+        self.radio_text = ttk.Radiobutton(
+            mode_frame, text="文字色", variable=self.controller.extraction_mode, value="text"
+        )
+        self.radio_text.pack(side=tk.LEFT, padx=5, pady=2)
+
+        # --- 抽出ボタン ---
+        self.btn_extract = ttk.Button(top_frame, text="抽出", command=self.controller.run_extraction)
+        self.btn_extract.pack(side=tk.LEFT, padx=(0, 5))
+
+        # --- 参照ボタン (右端) ---
+        self.btn_browse = ttk.Button(top_frame, text="参照...", command=self.controller.select_pdf_file)
+        self.btn_browse.pack(side=tk.RIGHT, padx=(5, 0))
+
+        # --- ファイルパス入力欄 (中央の残りスペース) ---
+        self.entry_filepath = ttk.Entry(top_frame, textvariable=self.controller.filepath_var)
+        self.entry_filepath.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4)
+
 
         content_frame = ttk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
         content_frame.pack(fill=tk.BOTH, expand=True)

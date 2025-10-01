@@ -7,21 +7,6 @@ class AppSettings:
 
     このクラスは、設定ファイルが存在しない場合や、特定のキーが
     欠けている場合に備えて、フォールバック（デフォルト値）を提供します。
-
-    Attributes:
-        min_r (int): 検出対象の赤色の最小値 (0-255)。
-        max_r (int): 検出対象の赤色の最大値 (0-255)。
-        min_g (int): 検出対象の緑色の最小値 (0-255)。
-        max_g (int): 検出対象の緑色の最大値 (0-255)。
-        min_b (int): 検出対象の青色の最小値 (0-255)。
-        max_b (int): 検出対象の青色の最大値 (0-255)。
-        min_r_float (float): PyMuPDFで利用する赤色の最小値 (0.0-1.0)。
-        max_r_float (float): PyMuPDFで利用する赤色の最大値 (0.0-1.0)。
-        min_g_float (float): PyMuPDFで利用する緑色の最小値 (0.0-1.0)。
-        max_g_float (float): PyMuPDFで利用する緑色の最大値 (0.0-1.0)。
-        min_b_float (float): PyMuPDFで利用する青色の最小値 (0.0-1.0)。
-        max_b_float (float): PyMuPDFで利用する青色の最大値 (0.0-1.0)。
-        font_size (int): アプリケーションのデフォルトフォントサイズ。
     """
     def __init__(self, filepath="setting.ini"):
         """AppSettingsを初期化します。
@@ -33,21 +18,29 @@ class AppSettings:
         config = configparser.ConfigParser()
         config.read(filepath, encoding='utf-8')
 
-        # --- 色設定の読み込み ---
-        self.min_r = config.getint("ColorRange", "Min_R", fallback=200)
-        self.max_r = config.getint("ColorRange", "Max_R", fallback=255)
-        self.min_g = config.getint("ColorRange", "Min_G", fallback=200)
-        self.max_g = config.getint("ColorRange", "Max_G", fallback=255)
-        self.min_b = config.getint("ColorRange", "Min_B", fallback=0)
-        self.max_b = config.getint("ColorRange", "Max_B", fallback=50)
+        # --- ハイライト色設定の読み込み ---
+        self.h_min_r = config.getint("HighlightColor", "Min_R", fallback=200)
+        self.h_max_r = config.getint("HighlightColor", "Max_R", fallback=255)
+        self.h_min_g = config.getint("HighlightColor", "Min_G", fallback=200)
+        self.h_max_g = config.getint("HighlightColor", "Max_G", fallback=255)
+        self.h_min_b = config.getint("HighlightColor", "Min_B", fallback=0)
+        self.h_max_b = config.getint("HighlightColor", "Max_B", fallback=50)
 
-        # PyMuPDFで利用するために0.0-1.0の範囲のフロート値に変換
-        self.min_r_float = self.min_r / 255.0
-        self.max_r_float = self.max_r / 255.0
-        self.min_g_float = self.min_g / 255.0
-        self.max_g_float = self.max_g / 255.0
-        self.min_b_float = self.min_b / 255.0
-        self.max_b_float = self.max_b / 255.0
+        # PyMuPDFのハイライト検出で利用するために0.0-1.0の範囲のフロート値に変換
+        self.h_min_r_float = self.h_min_r / 255.0
+        self.h_max_r_float = self.h_max_r / 255.0
+        self.h_min_g_float = self.h_min_g / 255.0
+        self.h_max_g_float = self.h_max_g / 255.0
+        self.h_min_b_float = self.h_min_b / 255.0
+        self.h_max_b_float = self.h_max_b / 255.0
+
+        # --- 文字色設定の読み込み (0-255の整数値) ---
+        self.t_min_r = config.getint("TextColor", "Min_R", fallback=200)
+        self.t_max_r = config.getint("TextColor", "Max_R", fallback=255)
+        self.t_min_g = config.getint("TextColor", "Min_G", fallback=0)
+        self.t_max_g = config.getint("TextColor", "Max_G", fallback=50)
+        self.t_min_b = config.getint("TextColor", "Min_B", fallback=0)
+        self.t_max_b = config.getint("TextColor", "Max_B", fallback=50)
 
         # --- UI設定の読み込み ---
         self.font_size = config.getint("UI", "font_size", fallback=10)

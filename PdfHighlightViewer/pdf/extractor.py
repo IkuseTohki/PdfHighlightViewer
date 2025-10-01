@@ -24,9 +24,9 @@ def extract_colored_regions(doc, app_settings):
                 stroke_color = colors.get('stroke') # ハイライトの色はstrokeで定義される
                 if stroke_color and len(stroke_color) == 3:
                     r, g, b = stroke_color
-                    if (app_settings.min_r_float <= r <= app_settings.max_r_float and
-                        app_settings.min_g_float <= g <= app_settings.max_g_float and
-                        app_settings.min_b_float <= b <= app_settings.max_b_float):
+                    if (app_settings.h_min_r_float <= r <= app_settings.h_max_r_float and
+                        app_settings.h_min_g_float <= g <= app_settings.h_max_g_float and
+                        app_settings.h_min_b_float <= b <= app_settings.h_max_b_float):
                         highlights.append((page_num, annot.rect))
 
         # 方法2: 描画ベースの矩形（塗りつぶし or 線）を検出
@@ -42,9 +42,9 @@ def extract_colored_regions(doc, app_settings):
             fill_color = path.get("fill")
             if fill_color and len(fill_color) == 3:
                 r, g, b = fill_color
-                if (app_settings.min_r_float <= r <= app_settings.max_r_float and
-                    app_settings.min_g_float <= g <= app_settings.max_g_float and
-                    app_settings.min_b_float <= b <= app_settings.max_b_float):
+                if (app_settings.h_min_r_float <= r <= app_settings.h_max_r_float and
+                    app_settings.h_min_g_float <= g <= app_settings.h_max_g_float and
+                    app_settings.h_min_b_float <= b <= app_settings.h_max_b_float):
                     is_target_color = True
             
             # 線の色をチェック (まだ対象色と判定されていなければ)
@@ -52,9 +52,9 @@ def extract_colored_regions(doc, app_settings):
                 stroke_color = path.get("color")
                 if stroke_color and len(stroke_color) == 3:
                     r, g, b = stroke_color
-                    if (app_settings.min_r_float <= r <= app_settings.max_r_float and
-                        app_settings.min_g_float <= g <= app_settings.max_g_float and
-                        app_settings.min_b_float <= b <= app_settings.max_b_float):
+                    if (app_settings.h_min_r_float <= r <= app_settings.h_max_r_float and
+                        app_settings.h_min_g_float <= g <= app_settings.h_max_g_float and
+                        app_settings.h_min_b_float <= b <= app_settings.h_max_b_float):
                         is_target_color = True
             
             if is_target_color:
@@ -73,3 +73,54 @@ def extract_colored_regions(doc, app_settings):
             seen_rects.add(rect_tuple)
 
     return unique_highlights
+
+def extract_colored_text_regions(doc, app_settings):
+    """PDFドキュメントから指定された色の文字領域を検出します。
+
+    Args:
+        doc (fitz.Document): 解析対象のPDFドキュメント。
+        app_settings (AppSettings): 抽出対象の色やUIの設定を含むオブジェクト。
+
+    Returns:
+        list: 検出された領域情報のタプルのリスト。[(page_num, rect), ...]
+    """
+    text_regions = []
+    for page_num, page in enumerate(doc):
+        # rawdict形式でテキスト情報を取得
+        page_dict = page.get_text("rawdict")
+        for block in page_dict.get("blocks", []):
+            for line in block.get("lines", []):
+                for span in line.get("spans", []):
+                    # スパンの色情報を取得 (整数形式)
+                    color_int = span.get("color")
+                    if color_int is None:
+                        continue
+
+                    # 整数からRGB成分に変換
+                    r = (color_int >> 16) & 0xFF
+                    g = (color_int >> 8) & 0xFF
+                    b = color_int & 0xFF
+
+                    # 設定ファイルの色範囲と比較
+                    if (app_settings.t_min_r <= r <= app_settings.t_max_r and
+                        app_settings.t_min_g <= g <= app_settings.t_max_g and
+                        app_settings.t_min_b <= b <= app_settings.t_max_b):
+                        
+                        rect = fitz.Rect(span["bbox"])
+                        # 小さすぎるノイズのような領域は除外
+                        if rect.width > 1 and rect.height > 1:
+                            text_regions.append((page_num, rect))
+
+    # TODO: 隣接するテキスト領域を結合して、より大きなまとまりにする処理を追加する
+    #       現状では文字スパンごとに領域が分割されてしまうため。
+
+    # 重複する領域を削除
+    unique_regions = []
+    seen_rects = set()
+    for page_num, rect in text_regions:
+        rect_tuple = (page_num, rect.x0, rect.y0, rect.x1, rect.y1)
+        if rect_tuple not in seen_rects:
+            unique_regions.append((page_num, rect))
+            seen_rects.add(rect_tuple)
+
+    return unique_regions
