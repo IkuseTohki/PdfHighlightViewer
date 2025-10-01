@@ -205,7 +205,12 @@ class MainWindow:
     def zoom_in(self):
         """表示倍率を上げて再描画します。"""
         if not self.doc: return
+        if self.scale >= 5.0: # 500%を上限とする
+            return
         self.scale += 0.1
+        # 浮動小数点数の誤差を考慮し、上限を超えた場合は500%に設定
+        if self.scale > 5.0:
+            self.scale = 5.0
         self.ui.scale_label.config(text=f"{self.scale*100:.0f}%")
         self.show_page(self.current_page_num, highlight_rect=self.current_highlight_rect)
 

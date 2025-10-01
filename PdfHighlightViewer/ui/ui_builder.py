@@ -114,7 +114,7 @@ class UIBuilder:
 
         self.zoom_out_btn = ttk.Button(zoom_frame, text="-", command=self.controller.zoom_out, width=2)
         self.zoom_out_btn.pack(side=tk.LEFT, padx=5)
-        self.scale_label = ttk.Label(zoom_frame, text=f"{self.controller.scale*100:.0f}%")
+        self.scale_label = ttk.Label(zoom_frame, text=f"{self.controller.scale*100:.0f}%", width=5, anchor=tk.CENTER)
         self.scale_label.pack(side=tk.LEFT)
         self.zoom_in_btn = ttk.Button(zoom_frame, text="+", command=self.controller.zoom_in, width=2)
         self.zoom_in_btn.pack(side=tk.LEFT, padx=5)
