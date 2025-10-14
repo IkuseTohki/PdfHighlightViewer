@@ -10,6 +10,7 @@ from pdf import extractor, renderer
 from export.exporter import Exporter
 from export.formats import ExportFormat
 from .ui_builder import UIBuilder
+from .settings_window import SettingsWindow
 
 class MainWindow:
     """アプリケーションのメインウィンドウとUIロジックを管理するクラス。"""
@@ -201,6 +202,10 @@ class MainWindow:
 
         exporter = Exporter(self.doc, self.highlights, self.ui.listbox, self.app_settings)
         exporter.export_all(export_format_enum)
+
+    def open_settings_window(self):
+        """設定ウィンドウを開きます。"""
+        SettingsWindow(self.root, self)
 
     def zoom_in(self):
         """表示倍率を上げて再描画します。"""

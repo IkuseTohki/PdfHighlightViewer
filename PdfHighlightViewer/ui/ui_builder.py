@@ -28,6 +28,7 @@ class UIBuilder:
         menubar.add_cascade(label="ファイル", menu=file_menu)
         file_menu.add_command(label="PDFファイルを選択...", command=self.controller.select_pdf_file)
         file_menu.add_command(label="抽出を実行", command=self.controller.run_extraction)
+        file_menu.add_command(label="設定...", command=self.controller.open_settings_window)
         file_menu.add_separator()
         file_menu.add_command(label="終了", command=self.root.quit)
 
@@ -50,20 +51,6 @@ class UIBuilder:
 
         top_frame = ttk.Frame(main_frame)
         top_frame.pack(fill=tk.X, pady=(0, 5))
-
-        # --- 抽出対象の選択 (左端) ---
-        mode_frame = ttk.Labelframe(top_frame, text="抽出対象")
-        mode_frame.pack(side=tk.LEFT, padx=(0, 5))
-
-        self.radio_highlight = ttk.Radiobutton(
-            mode_frame, text="ハイライト", variable=self.controller.extraction_mode, value="highlight"
-        )
-        self.radio_highlight.pack(side=tk.LEFT, padx=5, pady=2)
-
-        self.radio_text = ttk.Radiobutton(
-            mode_frame, text="文字色", variable=self.controller.extraction_mode, value="text"
-        )
-        self.radio_text.pack(side=tk.LEFT, padx=5, pady=2)
 
         # --- 抽出ボタン ---
         self.btn_extract = ttk.Button(top_frame, text="抽出", command=self.controller.run_extraction)
