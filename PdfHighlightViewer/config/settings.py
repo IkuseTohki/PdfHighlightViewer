@@ -44,7 +44,10 @@ class AppSettings:
 
         # --- UI設定の読み込み ---
         self.font_size = config.getint("UI", "font_size", fallback=10)
+        self.highlight_border_width = config.getint("UI", "HighlightBorderWidth", fallback=3)
 
         # --- エクスポート設定の読み込み ---
         self.pdf_export_mode = config.get("Export", "PdfExportMode", fallback="one_page")
         self.excel_image_scale = config.getfloat("Export", "ExcelImageScale", fallback=2.0)
+        self.image_export_border_width = config.getint("Export", "ImageExportBorderWidth", fallback=5)
+        self.pdf_export_border_width = config.getfloat("Export", "PdfExportBorderWidth", fallback=1.5)

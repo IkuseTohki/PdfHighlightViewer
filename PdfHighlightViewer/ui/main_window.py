@@ -173,7 +173,7 @@ class MainWindow:
                 highlight_rect.x1 * self.scale,
                 highlight_rect.y1 * self.scale,
                 outline="red",
-                width=3,
+                width=self.app_settings.highlight_border_width,
                 tags="highlight"
             )
             # スクロール位置の計算と移動

@@ -83,7 +83,7 @@ class Exporter:
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
             draw = ImageDraw.Draw(img)
             highlight_rect_on_image = rect * mat
-            draw.rectangle((highlight_rect_on_image.x0, highlight_rect_on_image.y0, highlight_rect_on_image.x1, highlight_rect_on_image.y1), outline="red", width=5)
+            draw.rectangle((highlight_rect_on_image.x0, highlight_rect_on_image.y0, highlight_rect_on_image.x1, highlight_rect_on_image.y1), outline="red", width=self.app_settings.image_export_border_width)
             img.save(filepath)
             messagebox.showinfo("成功", f"ページ画像をエクスポートしました:\n{filepath}")
         except Exception as e:
@@ -109,7 +109,7 @@ class Exporter:
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                 draw = ImageDraw.Draw(img)
                 highlight_rect_on_image = rect * mat
-                draw.rectangle((highlight_rect_on_image.x0, highlight_rect_on_image.y0, highlight_rect_on_image.x1, highlight_rect_on_image.y1), outline="red", width=5)
+                draw.rectangle((highlight_rect_on_image.x0, highlight_rect_on_image.y0, highlight_rect_on_image.x1, highlight_rect_on_image.y1), outline="red", width=self.app_settings.image_export_border_width)
                 img.save(filepath)
                 exported_count += 1
             messagebox.showinfo("成功", f"{exported_count}個のページ画像をエクスポートしました。\nフォルダ: {folder_path}")
@@ -133,7 +133,7 @@ class Exporter:
             new_doc = fitz.open()
             new_doc.insert_pdf(self.doc, from_page=page_num, to_page=page_num)
             new_page = new_doc[0]
-            new_page.draw_rect(rect, color=(1, 0, 0), width=1.5)
+            new_page.draw_rect(rect, color=(1, 0, 0), width=self.app_settings.pdf_export_border_width)
             new_doc.save(filepath)
             new_doc.close()
             messagebox.showinfo("成功", f"PDFをエクスポートしました:\n{filepath}")
@@ -151,7 +151,7 @@ class Exporter:
                     temp_doc = fitz.open()
                     temp_doc.insert_pdf(self.doc, from_page=page_num, to_page=page_num)
                     new_page = temp_doc[0]
-                    new_page.draw_rect(rect, color=(1, 0, 0), width=1.5)
+                    new_page.draw_rect(rect, color=(1, 0, 0), width=self.app_settings.pdf_export_border_width)
                     final_doc.insert_pdf(temp_doc)
                     temp_doc.close()
             elif self.app_settings.pdf_export_mode == 'merge':
@@ -164,7 +164,7 @@ class Exporter:
                     temp_doc.insert_pdf(self.doc, from_page=page_num, to_page=page_num)
                     new_page = temp_doc[0]
                     for rect in highlights_by_page[page_num]:
-                        new_page.draw_rect(rect, color=(1, 0, 0), width=1.5)
+                        new_page.draw_rect(rect, color=(1, 0, 0), width=self.app_settings.pdf_export_border_width)
                     final_doc.insert_pdf(temp_doc)
                     temp_doc.close()
             final_doc.save(filepath)
@@ -203,7 +203,7 @@ class Exporter:
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
             draw = ImageDraw.Draw(img)
             highlight_rect_on_image = rect * mat
-            draw.rectangle((highlight_rect_on_image.x0, highlight_rect_on_image.y0, highlight_rect_on_image.x1, highlight_rect_on_image.y1), outline="red", width=3)
+            draw.rectangle((highlight_rect_on_image.x0, highlight_rect_on_image.y0, highlight_rect_on_image.x1, highlight_rect_on_image.y1), outline="red", width=self.app_settings.image_export_border_width)
             img_path = io.BytesIO()
             img.save(img_path, format="PNG")
             img_path.seek(0)
@@ -253,7 +253,7 @@ class Exporter:
                 draw = ImageDraw.Draw(img)
                 for r in rects:
                     highlight_rect_on_image = r * mat
-                    draw.rectangle((highlight_rect_on_image.x0, highlight_rect_on_image.y0, highlight_rect_on_image.x1, highlight_rect_on_image.y1), outline="red", width=3)
+                    draw.rectangle((highlight_rect_on_image.x0, highlight_rect_on_image.y0, highlight_rect_on_image.x1, highlight_rect_on_image.y1), outline="red", width=self.app_settings.image_export_border_width)
                 img_path = io.BytesIO()
                 img.save(img_path, format="PNG")
                 img_path.seek(0)
