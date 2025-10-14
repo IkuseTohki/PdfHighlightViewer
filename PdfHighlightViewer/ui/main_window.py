@@ -36,7 +36,8 @@ class MainWindow:
         self.scale = 1.0
         self.app_settings = AppSettings()
         self.export_format = tk.StringVar(value=ExportFormat.PNG.value)
-        self.extraction_mode = tk.StringVar(value="highlight")  # 抽出モード（"highlight" or "text"）
+        self.extraction_mode = tk.StringVar(value="highlight")  # "highlight", "text", "keyword"
+        self.keyword_var = tk.StringVar(value="")
 
         # UIの構築をUIBuilderに委譲
         self.ui = UIBuilder(self.root, self)
@@ -89,6 +90,13 @@ class MainWindow:
                 self.highlights = extractor.extract_colored_regions(self.doc, self.app_settings)
             elif mode == "text":
                 self.highlights = extractor.extract_colored_text_regions(self.doc, self.app_settings)
+            elif mode == "keyword":
+                keyword = self.keyword_var.get()
+                if not keyword:
+                    messagebox.showwarning("キーワード未入力", "キーワードが入力されていません。メニューの「ファイル」>「設定...」からキーワードを入力してください。")
+                    self.highlights = []
+                else:
+                    self.highlights = extractor.extract_keyword_regions(self.doc, keyword)
             else:
                 self.highlights = []
                 messagebox.showerror("内部エラー", f"不明な抽出モードです: {mode}")

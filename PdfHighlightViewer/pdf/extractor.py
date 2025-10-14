@@ -124,3 +124,25 @@ def extract_colored_text_regions(doc, app_settings):
             seen_rects.add(rect_tuple)
 
     return unique_regions
+
+def extract_keyword_regions(doc, keyword):
+    """PDFドキュメントから指定されたキーワードの領域を検出します。
+
+    Args:
+        doc (fitz.Document): 解析対象のPDFドキュメント。
+        keyword (str): 検索するキーワード。
+
+    Returns:
+        list: 検出された領域情報のタプルのリスト。[(page_num, rect), ...]
+    """
+    keyword_regions = []
+    if not keyword:
+        return keyword_regions
+
+    for page_num, page in enumerate(doc):
+        # ページ内でキーワードを検索
+        rects = page.search_for(keyword)
+        for rect in rects:
+            keyword_regions.append((page_num, rect))
+
+    return keyword_regions
