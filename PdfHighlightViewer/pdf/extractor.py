@@ -1,72 +1,156 @@
-"""PDFから色付きの領域を検出する機能を提供します。"""
+import fitz
+from collections import defaultdict
 
-import fitz  # PyMuPDF
+class Highlight:
+    """抽出された領域の情報を格納するデータクラス。"""
+    def __init__(self, page_num, rect):
+        """Highlightオブジェクトを初期化します。
 
-def extract_colored_regions(doc, app_settings):
-    """PDFドキュメントから指定された色の領域を検出します。
+        Args:
+            page_num (int): 領域が存在するページ番号 (0-indexed)。
+            rect (fitz.Rect): 領域の座標。
+        """
+        self.page_num = page_num
+        self.rect = rect
 
-    注釈、塗りつぶされた矩形、線で描かれた矩形の中から、設定ファイルで
-    指定された色範囲に一致するものをすべて検索します。
+    def __repr__(self):
+        """Highlightオブジェクトの公式な文字列表現を返します。
+
+        Returns:
+            str: オブジェクトのデバッグ用文字列表現。
+        """
+        return f"Highlight(Page {self.page_num}, Rect{self.rect})"
+
+def extract_regions(doc, settings):
+    """設定に基づいて、PDFから複数の条件を組み合わせて領域を抽出します。
+
+    指定された複数の抽出条件（ハイライト色、文字色、キーワード）をAND条件
+    として扱い、すべての条件を満たす領域を抽出します。
 
     Args:
         doc (fitz.Document): 解析対象のPDFドキュメント。
-        app_settings (AppSettings): 抽出対象の色やUIの設定を含むオブジェクト。
+        settings (Settings): 抽出条件を含むアプリケーション設定オブジェクト。
 
     Returns:
-        list: 検出された領域情報のタプルのリスト。[(page_num, rect), ...]
+        list[Highlight]: 抽出された領域を表すHighlightオブジェクトのリスト。
+    """
+    extract_highlights = settings.extract_highlights
+    extract_text_color = settings.extract_text_color
+    extract_keyword = settings.extract_keyword
+    
+    num_of_conditions = sum([extract_highlights, extract_text_color, extract_keyword])
+
+    if num_of_conditions == 0:
+        return []
+
+    highlight_rects = _extract_colored_regions(doc, settings) if extract_highlights else None
+    text_color_rects = _extract_colored_text_regions(doc, settings) if extract_text_color else None
+    keyword_rects = _extract_keyword_regions(doc, settings.extraction_keyword) if extract_keyword else None
+
+    base_rects = []
+    if extract_keyword:
+        base_rects = keyword_rects
+    elif extract_text_color:
+        base_rects = text_color_rects
+    elif extract_highlights:
+        base_rects = highlight_rects
+
+    if num_of_conditions == 1:
+        return [Highlight(page_num, rect) for page_num, rect in base_rects]
+
+    highlights_by_page = defaultdict(list)
+    if highlight_rects is not None:
+        for page_num, rect in highlight_rects:
+            highlights_by_page[page_num].append(rect)
+
+    text_color_by_page = defaultdict(list)
+    if text_color_rects is not None:
+        for page_num, rect in text_color_rects:
+            text_color_by_page[page_num].append(rect)
+
+    final_results = []
+    for page_num, base_rect in base_rects:
+        is_valid = True
+
+        if extract_highlights and base_rects is not highlight_rects:
+            is_contained_in_highlight = any(h_rect.intersects(base_rect) for h_rect in highlights_by_page[page_num])
+            if not is_contained_in_highlight:
+                is_valid = False
+        
+        if is_valid and extract_text_color and base_rects is not text_color_rects:
+            is_intersecting_colored_text = any(base_rect.intersects(c_rect) for c_rect in text_color_by_page[page_num])
+            if not is_intersecting_colored_text:
+                is_valid = False
+        
+        if is_valid:
+            final_results.append(Highlight(page_num, base_rect))
+            
+    return final_results
+
+def _extract_colored_regions(doc, settings):
+    """PDFから指定された色の図形や注釈領域を抽出します。
+
+    設定で指定された色範囲に一致する、長方形の図形（drawings）や
+    ハイライト注釈（annotations）の領域を検出します。
+
+    Note:
+        この関数は内部利用を想定しています。
+
+    Args:
+        doc (fitz.Document): 解析対象のPDFドキュメント。
+        settings (Settings): ハイライト色の範囲設定を含むオブジェクト。
+
+    Returns:
+        list[tuple[int, fitz.Rect]]: ページ番号と領域の座標(Rect)の
+            タプルからなるリスト。
     """
     highlights = []
+    h_min_r, h_min_g, h_min_b = settings.highlight_color_min
+    h_max_r, h_max_g, h_max_b = settings.highlight_color_max
+
     for page_num, page in enumerate(doc):
-        # 方法1: 注釈ベースのハイライトを検出
         for annot in page.annots():
-            if annot.type[0] == 8:  # 8はハイライト注釈
+            if annot.type[0] == 8:
                 colors = annot.colors
-                stroke_color = colors.get('stroke') # ハイライトの色はstrokeで定義される
+                stroke_color = colors.get('stroke')
                 if stroke_color and len(stroke_color) == 3:
-                    r, g, b = stroke_color
-                    if (app_settings.h_min_r_float <= r <= app_settings.h_max_r_float and
-                        app_settings.h_min_g_float <= g <= app_settings.h_max_g_float and
-                        app_settings.h_min_b_float <= b <= app_settings.h_max_b_float):
+                    r, g, b = [int(c * 255) for c in stroke_color]
+                    if (h_min_r <= r <= h_max_r and
+                        h_min_g <= g <= h_max_g and
+                        h_min_b <= b <= h_max_b):
                         highlights.append((page_num, annot.rect))
 
-        # 方法2: 描画ベースの矩形（塗りつぶし or 線）を検出
         drawings = page.get_drawings()
         for path in drawings:
-            # 描画コマンドに矩形('re')が含まれているかチェック
             is_rect = any(item[0] == "re" for item in path.get("items", []))
             if not is_rect:
                 continue
 
             is_target_color = False
-            # 塗りつぶし色をチェック
             fill_color = path.get("fill")
             if fill_color and len(fill_color) == 3:
-                r, g, b = fill_color
-                if (app_settings.h_min_r_float <= r <= app_settings.h_max_r_float and
-                    app_settings.h_min_g_float <= g <= app_settings.h_max_g_float and
-                    app_settings.h_min_b_float <= b <= app_settings.h_max_b_float):
+                r, g, b = [int(c * 255) for c in fill_color]
+                if (h_min_r <= r <= h_max_r and
+                    h_min_g <= g <= h_max_g and
+                    h_min_b <= b <= h_max_b):
                     is_target_color = True
             
-            # 線の色をチェック (まだ対象色と判定されていなければ)
             if not is_target_color:
                 stroke_color = path.get("color")
                 if stroke_color and len(stroke_color) == 3:
-                    r, g, b = stroke_color
-                    if (app_settings.h_min_r_float <= r <= app_settings.h_max_r_float and
-                        app_settings.h_min_g_float <= g <= app_settings.h_max_g_float and
-                        app_settings.h_min_b_float <= b <= app_settings.h_max_b_float):
+                    r, g, b = [int(c * 255) for c in stroke_color]
+                    if (h_min_r <= r <= h_max_r and
+                        h_min_g <= g <= h_max_g and
+                        h_min_b <= b <= h_max_b):
                         is_target_color = True
             
             if is_target_color:
-                # 小さすぎるノイズのような矩形は除外
                 if path["rect"].width > 1 and path["rect"].height > 1:
                     highlights.append((page_num, path["rect"]))
 
-    # 注釈と描画の両方で検出された場合など、重複する領域を削除
     unique_highlights = []
     seen_rects = set()
     for page_num, rect in highlights:
-        # fitz.Rectはミュータブルでハッシュ化できないため、座標のタプルをキーにする
         rect_tuple = (page_num, rect.x0, rect.y0, rect.x1, rect.y1)
         if rect_tuple not in seen_rects:
             unique_highlights.append((page_num, rect))
@@ -74,47 +158,48 @@ def extract_colored_regions(doc, app_settings):
 
     return unique_highlights
 
-def extract_colored_text_regions(doc, app_settings):
-    """PDFドキュメントから指定された色の文字領域を検出します。
+def _extract_colored_text_regions(doc, settings):
+    """PDFから指定された色の文字が含まれる領域を抽出します。
+
+    設定で指定された色範囲に一致する文字（span）を検出し、
+    その文字が含まれる領域を返します。
+
+    Note:
+        この関数は内部利用を想定しています。
 
     Args:
         doc (fitz.Document): 解析対象のPDFドキュメント。
-        app_settings (AppSettings): 抽出対象の色やUIの設定を含むオブジェクト。
+        settings (Settings): 文字色の範囲設定を含むオブジェクト。
 
     Returns:
-        list: 検出された領域情報のタプルのリスト。[(page_num, rect), ...]
+        list[tuple[int, fitz.Rect]]: ページ番号と領域の座標(Rect)の
+            タプルからなるリスト。
     """
     text_regions = []
+    t_min_r, t_min_g, t_min_b = settings.text_color_min
+    t_max_r, t_max_g, t_max_b = settings.text_color_max
+
     for page_num, page in enumerate(doc):
-        # rawdict形式でテキスト情報を取得
         page_dict = page.get_text("rawdict")
         for block in page_dict.get("blocks", []):
             for line in block.get("lines", []):
                 for span in line.get("spans", []):
-                    # スパンの色情報を取得 (整数形式)
                     color_int = span.get("color")
                     if color_int is None:
                         continue
 
-                    # 整数からRGB成分に変換
                     r = (color_int >> 16) & 0xFF
                     g = (color_int >> 8) & 0xFF
                     b = color_int & 0xFF
 
-                    # 設定ファイルの色範囲と比較
-                    if (app_settings.t_min_r <= r <= app_settings.t_max_r and
-                        app_settings.t_min_g <= g <= app_settings.t_max_g and
-                        app_settings.t_min_b <= b <= app_settings.t_max_b):
+                    if (t_min_r <= r <= t_max_r and
+                        t_min_g <= g <= t_max_g and
+                        t_min_b <= b <= t_max_b):
                         
                         rect = fitz.Rect(span["bbox"])
-                        # 小さすぎるノイズのような領域は除外
                         if rect.width > 1 and rect.height > 1:
                             text_regions.append((page_num, rect))
 
-    # TODO: 隣接するテキスト領域を結合して、より大きなまとまりにする処理を追加する
-    #       現状では文字スパンごとに領域が分割されてしまうため。
-
-    # 重複する領域を削除
     unique_regions = []
     seen_rects = set()
     for page_num, rect in text_regions:
@@ -125,22 +210,28 @@ def extract_colored_text_regions(doc, app_settings):
 
     return unique_regions
 
-def extract_keyword_regions(doc, keyword):
-    """PDFドキュメントから指定されたキーワードの領域を検出します。
+def _extract_keyword_regions(doc, keyword):
+    """PDFから指定されたキーワードが含まれる領域を抽出します。
+
+    PyMuPDFの `search_for` メソッドを利用して、指定されたキーワードが
+    出現するすべての領域を検出します。
+
+    Note:
+        この関数は内部利用を想定しています。
 
     Args:
         doc (fitz.Document): 解析対象のPDFドキュメント。
-        keyword (str): 検索するキーワード。
+        keyword (str): 検索するキーワード。空文字列の場合は何も返しません。
 
     Returns:
-        list: 検出された領域情報のタプルのリスト。[(page_num, rect), ...]
+        list[tuple[int, fitz.Rect]]: ページ番号と領域の座標(Rect)の
+            タプルからなるリスト。
     """
     keyword_regions = []
     if not keyword:
         return keyword_regions
 
     for page_num, page in enumerate(doc):
-        # ページ内でキーワードを検索
         rects = page.search_for(keyword)
         for rect in rects:
             keyword_regions.append((page_num, rect))

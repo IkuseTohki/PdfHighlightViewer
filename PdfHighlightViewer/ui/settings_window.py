@@ -2,89 +2,100 @@ import tkinter as tk
 from tkinter import ttk
 
 class SettingsWindow(tk.Toplevel):
-    """設定画面のウィンドウ。"""
-
-    def __init__(self, parent, controller):
-        """SettingsWindowを初期化します。
+    """設定ウィンドウを表示、管理するクラス。
+    """
+    def __init__(self, parent, settings):
+        """SettingsWindowオブジェクトを初期化します。
 
         Args:
-            parent (tk.Widget): 親ウィジェット。
-            controller: UIイベントを処理するコントローラーオブジェクト。
+            parent (tk.Widget): 親ウィジェット (MainWindowインスタンス)。
+            settings (Settings): アプリケーションの設定オブジェクト。
         """
         super().__init__(parent)
+        self.parent = parent
+        self.settings = settings
         self.title("設定")
+        self.geometry("350x200")
         self.transient(parent)
         self.grab_set()
 
-        self.controller = controller
-        # MainWindowの状態をコピーして、このウィンドウ内での選択状態を保持
-        self.extraction_mode = tk.StringVar(value=self.controller.extraction_mode.get())
-        self.keyword_var = tk.StringVar(value=self.controller.keyword_var.get())
+        # ウィンドウが閉じられたときのイベントを捕捉
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
 
-        self._setup_widgets()
-        self._on_mode_change() # 初期状態を設定
+        self.extract_highlights_var = tk.BooleanVar(value=self.settings.extract_highlights)
+        self.extract_text_color_var = tk.BooleanVar(value=self.settings.extract_text_color)
+        self.extract_keyword_var = tk.BooleanVar(value=self.settings.extract_keyword)
+        self.extraction_keyword_var = tk.StringVar(value=self.settings.extraction_keyword)
 
-        self.wait_window(self)
+        self.setup_ui()
+        self.toggle_keyword_entry()
 
-    def _setup_widgets(self):
-        """ウィジェットの初期化と配置を行います。"""
-        main_frame = ttk.Frame(self, padding=10)
-        main_frame.pack(fill=tk.BOTH, expand=True)
+    def setup_ui(self):
+        """設定ウィンドウのUIウィジェットを生成し、配置します。
+        """
+        main_frame = ttk.Frame(self, padding="10")
+        main_frame.pack(expand=True, fill=tk.BOTH)
 
-        # --- 抽出対象の選択 ---
-        mode_frame = ttk.Labelframe(main_frame, text="抽出対象")
-        mode_frame.pack(fill=tk.X, pady=5)
+        # 抽出対象の選択
+        target_frame = ttk.LabelFrame(main_frame, text="抽出条件 (複数選択可)")
+        target_frame.pack(pady=5, padx=5, fill=tk.X)
 
-        radio_highlight = ttk.Radiobutton(
-            mode_frame, text="ハイライト", variable=self.extraction_mode, value="highlight",
-            command=self._on_mode_change
-        )
-        radio_highlight.pack(anchor=tk.W, padx=10, pady=2)
+        self.highlight_check = ttk.Checkbutton(
+            target_frame, text="ハイライト", variable=self.extract_highlights_var)
+        self.highlight_check.pack(anchor=tk.W, padx=10)
 
-        radio_text = ttk.Radiobutton(
-            mode_frame, text="文字色", variable=self.extraction_mode, value="text",
-            command=self._on_mode_change
-        )
-        radio_text.pack(anchor=tk.W, padx=10, pady=2)
+        self.color_check = ttk.Checkbutton(
+            target_frame, text="文字色", variable=self.extract_text_color_var)
+        self.color_check.pack(anchor=tk.W, padx=10)
 
-        # --- キーワード入力 ---
-        keyword_frame = ttk.Frame(mode_frame)
-        keyword_frame.pack(fill=tk.X, padx=5, pady=(2, 5))
+        keyword_frame = ttk.Frame(target_frame)
+        keyword_frame.pack(anchor=tk.W, padx=10, fill=tk.X)
+        
+        self.keyword_check = ttk.Checkbutton(
+            keyword_frame, text="キーワード:", variable=self.extract_keyword_var, command=self.toggle_keyword_entry)
+        self.keyword_check.pack(side=tk.LEFT)
 
-        self.radio_keyword = ttk.Radiobutton(
-            keyword_frame, text="キーワード:", variable=self.extraction_mode, value="keyword",
-            command=self._on_mode_change
-        )
-        self.radio_keyword.pack(side=tk.LEFT)
+        self.keyword_entry = ttk.Entry(keyword_frame, textvariable=self.extraction_keyword_var)
+        self.keyword_entry.pack(side=tk.LEFT, expand=True, fill=tk.X)
 
-        self.entry_keyword = ttk.Entry(keyword_frame, textvariable=self.keyword_var)
-        self.entry_keyword.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-
-        # --- ボタン ---
+        # ボタン
         button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=(10, 0))
+        button_frame.pack(pady=10, anchor="e")
 
-        ok_button = ttk.Button(button_frame, text="OK", command=self._on_ok)
-        ok_button.pack(side=tk.RIGHT, padx=5)
+        self.ok_button = ttk.Button(button_frame, text="OK", command=self.ok_button_action)
+        self.ok_button.pack(side=tk.LEFT, padx=5)
 
-        cancel_button = ttk.Button(button_frame, text="キャンセル", command=self._on_cancel)
-        cancel_button.pack(side=tk.RIGHT)
+        self.cancel_button = ttk.Button(button_frame, text="キャンセル", command=self.on_close)
+        self.cancel_button.pack(side=tk.LEFT, padx=5)
 
-    def _on_mode_change(self):
-        """抽出モードの選択に応じてUIの状態を切り替えます。"""
-        if self.extraction_mode.get() == "keyword":
-            self.entry_keyword.config(state="normal")
+    def toggle_keyword_entry(self):
+        """「キーワード」チェックボックスの状態に応じて入力欄の有効/無効を切り替えます。
+        """
+        if self.extract_keyword_var.get():
+            self.keyword_entry.config(state=tk.NORMAL)
         else:
-            self.entry_keyword.config(state="disabled")
+            self.keyword_entry.config(state=tk.DISABLED)
 
-    def _on_ok(self):
-        """OKボタンが押されたときの処理。"""
-        # MainWindowの状態に選択結果を反映
-        self.controller.extraction_mode.set(self.extraction_mode.get())
-        self.controller.keyword_var.set(self.keyword_var.get())
-        self.destroy()
+    def ok_button_action(self):
+        """「OK」ボタンが押された際の処理を定義します。
 
-    def _on_cancel(self):
-        """キャンセルボタンが押されたときの処理。"""
+        現在のUIの選択状態を `Settings` オブジェクトに反映し、
+        設定ファイルに保存してからウィンドウを閉じます。
+        """
+        self.settings.extract_highlights = self.extract_highlights_var.get()
+        self.settings.extract_text_color = self.extract_text_color_var.get()
+        self.settings.extract_keyword = self.extract_keyword_var.get()
+        self.settings.extraction_keyword = self.extraction_keyword_var.get()
+        self.settings.save_extraction_settings()
+        self.on_close()
+
+    def on_close(self):
+        """ウィンドウが閉じる際の処理を定義します。
+
+        親ウィンドウ（MainWindow）の抽出ボタンの状態を更新してから、
+        このウィンドウを破棄します。
+        """
+        # 親ウィンドウ (MainWindow) に状態の更新を通知
+        if hasattr(self.parent, 'update_extract_button_state'):
+            self.parent.update_extract_button_state()
         self.destroy()

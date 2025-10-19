@@ -1,3 +1,4 @@
+
 """PDFのハイライト情報を様々な形式でエクスポートする機能を提供します。"""
 
 import tkinter as tk
@@ -15,38 +16,52 @@ from .formats import ExportFormat
 class Exporter:
     """エクスポート処理を実行するクラス。"""
 
-    def __init__(self, doc, highlights, listbox, app_settings):
-        """Exporterを初期化します。
+    def __init__(self, doc, highlights, app_settings):
+        """Exporterオブジェクトを初期化します。
 
         Args:
             doc (fitz.Document): 操作対象のPDFドキュメント。
-            highlights (list): 抽出されたハイライト情報のリスト。
-            listbox (tk.Listbox): UIのリストボックスウィジェット。
-            app_settings (AppSettings): アプリケーションの設定オブジェクト。
+            highlights (list[Highlight]): 抽出されたハイライト情報のリスト。
+            app_settings (Settings): アプリケーションの設定オブジェクト。
         """
         self.doc = doc
         self.highlights = highlights
-        self.listbox = listbox
         self.app_settings = app_settings
 
-    def export_selected(self, export_format: ExportFormat):
-        """選択されたハイライト領域を、指定された形式でエクスポートします。"""
+    def export_selected(self, export_format: ExportFormat, listbox: tk.Listbox):
+        """選択されたハイライト領域を、指定された形式でエクスポートします。
+
+        UI上で選択されている単一のハイライト領域を、指定された形式の
+        ファイルとして保存します。
+
+        Args:
+            export_format (ExportFormat): PNG、PDF、EXCELのいずれかの形式。
+            listbox (tk.Listbox): 選択項目を取得するためのリストボックスウィジェット。
+        """
         if not self.doc or not self.highlights:
             messagebox.showwarning("エクスポート不可", "エクスポート対象のPDFが開かれていません。")
             return
 
         if export_format is ExportFormat.PNG:
-            self._export_selected_highlight_as_image()
+            self._export_selected_highlight_as_image(listbox)
         elif export_format is ExportFormat.PDF:
-            self._export_selected_highlight_as_pdf()
+            self._export_selected_highlight_as_pdf(listbox)
         elif export_format is ExportFormat.EXCEL:
-            self._export_selected_highlight_as_excel()
+            self._export_selected_highlight_as_excel(listbox)
         else:
             # このルートは通常通らないはず
             messagebox.showerror("内部エラー", f"未対応のエクスポート形式です: {export_format}")
 
     def export_all(self, export_format: ExportFormat):
-        """すべてのハイライト領域を、指定された形式でエクスポートします。"""
+        """すべてのハイライト領域を、指定された形式でエクスポートします。
+
+        抽出されたすべてのハイライト領域を、指定された形式のファイルとして
+        保存します。形式によっては、単一のファイルにまとめられたり、
+        複数のファイルとして出力されたりします。
+
+        Args:
+            export_format (ExportFormat): PNG、PDF、EXCELのいずれかの形式。
+        """
         if not self.doc or not self.highlights:
             messagebox.showwarning("エクスポート不可", "エクスポート対象のPDFが開かれていません。")
             return
@@ -59,18 +74,30 @@ class Exporter:
             self._export_all_highlights_as_excel()
         else:
             # このルートは通常通らないはず
-            messagebox.showerror("内部エラー", f"未対応のエクスポート形式です: {export_format}")
+            messagebox.showerror("内部エラー", f"未対応のエクスポート形式です: {self.export_format}")
 
     # --- Private Image Export Methods ---
-    def _export_selected_highlight_as_image(self):
-        selection_indices = self.listbox.curselection()
+    def _export_selected_highlight_as_image(self, listbox: tk.Listbox):
+        """選択中のハイライト箇所を含むページ全体を画像として保存します。
+
+        ハイライト箇所は赤枠で囲まれて描画されます。
+
+        Note:
+            この関数は内部利用を想定しています。
+
+        Args:
+            listbox (tk.Listbox): 選択項目を取得するためのリストボックスウィジェット。
+        """
+        selection_indices = listbox.curselection()
         if not selection_indices:
             messagebox.showwarning("エクスポート不可", "エクスポートする領域が選択されていません。")
             return
         selected_index = selection_indices[0]
         if not (0 <= selected_index < len(self.highlights)):
             return
-        page_num, rect = self.highlights[selected_index]
+        highlight = self.highlights[selected_index]
+        page_num = highlight.page_num
+        rect = highlight.rect
         filepath = filedialog.asksaveasfilename(title="ページ画像を保存", defaultextension=".png", filetypes=[("PNG Image", "*.png"), ("JPEG Image", "*.jpg")])
         if not filepath:
             return
@@ -90,6 +117,14 @@ class Exporter:
             messagebox.showerror("エクスポートエラー", f"画像の保存中にエラーが発生しました:\n{e}")
 
     def _export_all_highlights_as_image(self):
+        """すべてのハイライト箇所を個別の画像ファイルとして保存します。
+
+        各ハイライト箇所を含むページ全体が、それぞれ別の画像ファイルとして
+        指定されたフォルダに保存されます。ハイライト箇所は赤枠で囲まれます。
+
+        Note:
+            この関数は内部利用を想定しています。
+        """
         folder_path = filedialog.askdirectory(title="保存先のフォルダを選択")
         if not folder_path:
             return
@@ -99,7 +134,9 @@ class Exporter:
             dpi = 300
             zoom = dpi / 72
             mat = fitz.Matrix(zoom, zoom)
-            for page_num, rect in self.highlights:
+            for highlight in self.highlights:
+                page_num = highlight.page_num
+                rect = highlight.rect
                 page_counters[page_num] += 1
                 counter = page_counters[page_num]
                 filename = f"page-{page_num + 1}-{counter}.png"
@@ -117,15 +154,27 @@ class Exporter:
             messagebox.showerror("エクスポートエラー", f"エクスポート中にエラーが発生しました:\n{e}")
 
     # --- Private PDF Export Methods ---
-    def _export_selected_highlight_as_pdf(self):
-        selection_indices = self.listbox.curselection()
+    def _export_selected_highlight_as_pdf(self, listbox: tk.Listbox):
+        """選択中のハイライト箇所を含むページを単一ページのPDFとして保存します。
+
+        ハイライト箇所は赤枠で囲まれて描画されます。
+
+        Note:
+            この関数は内部利用を想定しています。
+
+        Args:
+            listbox (tk.Listbox): 選択項目を取得するためのリストボックスウィジェット。
+        """
+        selection_indices = listbox.curselection()
         if not selection_indices:
             messagebox.showwarning("エクスポート不可", "エクスポートする領域が選択されていません。")
             return
         selected_index = selection_indices[0]
         if not (0 <= selected_index < len(self.highlights)):
             return
-        page_num, rect = self.highlights[selected_index]
+        highlight = self.highlights[selected_index]
+        page_num = highlight.page_num
+        rect = highlight.rect
         filepath = filedialog.asksaveasfilename(title="PDFとして保存", defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
         if not filepath:
             return
@@ -141,13 +190,23 @@ class Exporter:
             messagebox.showerror("エクスポートエラー", f"PDFの保存中にエラーが発生しました:\n{e}")
 
     def _export_all_highlights_as_pdf(self):
+        """すべてのハイライト箇所を単一のPDFファイルにまとめて保存します。
+
+        設定（`pdf_export_mode`）に応じて、ハイライトごとにページを作成するか、
+        同一ページ上のハイライトを1ページにまとめるかが決まります。
+
+        Note:
+            この関数は内部利用を想定しています。
+        """
         filepath = filedialog.asksaveasfilename(title="PDFとして保存", defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
         if not filepath:
             return
         final_doc = fitz.open()
         try:
             if self.app_settings.pdf_export_mode == 'one_page':
-                for page_num, rect in self.highlights:
+                for highlight in self.highlights:
+                    page_num = highlight.page_num
+                    rect = highlight.rect
                     temp_doc = fitz.open()
                     temp_doc.insert_pdf(self.doc, from_page=page_num, to_page=page_num)
                     new_page = temp_doc[0]
@@ -156,8 +215,8 @@ class Exporter:
                     temp_doc.close()
             elif self.app_settings.pdf_export_mode == 'merge':
                 highlights_by_page = defaultdict(list)
-                for page_num, rect in self.highlights:
-                    highlights_by_page[page_num].append(rect)
+                for highlight in self.highlights:
+                    highlights_by_page[highlight.page_num].append(highlight.rect)
                 sorted_pages = sorted(highlights_by_page.keys())
                 for page_num in sorted_pages:
                     temp_doc = fitz.open()
@@ -175,8 +234,19 @@ class Exporter:
             final_doc.close()
 
     # --- Private Excel Export Methods ---
-    def _export_selected_highlight_as_excel(self):
-        selection_indices = self.listbox.curselection()
+    def _export_selected_highlight_as_excel(self, listbox: tk.Listbox):
+        """選択中のハイライト箇所をExcelファイルとして保存します。
+
+        ハイライト箇所の画像、ページ番号、抽出されたテキストを1行の
+        データとしてExcelファイルに出力します。
+
+        Note:
+            この関数は内部利用を想定しています。
+
+        Args:
+            listbox (tk.Listbox): 選択項目を取得するためのリストボックスウィジェット。
+        """
+        selection_indices = listbox.curselection()
         if not selection_indices:
             messagebox.showwarning("エクスポート不可", "エクスポートする領域が選択されていません。")
             return
@@ -188,10 +258,12 @@ class Exporter:
             return
         try:
             wb = openpyxl.Workbook()
-            ws = wb.active
+            ws = wb.active()
             ws.title = "Highlight"
             ws.append(["No", "ページ画像", "ページ番号", "テキスト"])
-            page_num, rect = self.highlights[selected_index]
+            highlight = self.highlights[selected_index]
+            page_num = highlight.page_num
+            rect = highlight.rect
             page = self.doc[page_num]
             text = page.get_text("text", clip=rect).strip()
             ws.cell(row=2, column=1, value=1)
@@ -220,17 +292,25 @@ class Exporter:
             messagebox.showerror("エクスポートエラー", f"Excelファイルのエクスポート中にエラーが発生しました:\n{e}")
 
     def _export_all_highlights_as_excel(self):
+        """すべてのハイライト箇所を単一のExcelファイルにまとめて保存します。
+
+        各ハイライト箇所の画像、ページ番号、抽出されたテキストを
+        Excelファイルに1行ずつのデータとして出力します。
+
+        Note:
+            この関数は内部利用を想定しています。
+        """
         filepath = filedialog.asksaveasfilename(title="Excelとして保存", defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")])
         if not filepath:
             return
         try:
             wb = openpyxl.Workbook()
-            ws = wb.active
+            ws = wb.active()
             ws.title = "Highlights"
             ws.append(["No", "ページ画像", "ページ番号", "テキスト"])
             highlights_by_page = defaultdict(list)
-            for page_num, rect in self.highlights:
-                highlights_by_page[page_num].append(rect)
+            for highlight in self.highlights:
+                highlights_by_page[highlight.page_num].append(highlight.rect)
             sorted_pages = sorted(highlights_by_page.keys())
             current_row = 2
             highlight_no = 1

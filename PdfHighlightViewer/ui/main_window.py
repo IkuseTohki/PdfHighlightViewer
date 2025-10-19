@@ -1,236 +1,317 @@
-"""アプリケーションのメインウィンドウとUIの振る舞いを定義します。"""
-
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, font
 import fitz
 from typing import Optional
 
-from config.settings import AppSettings
-from pdf import extractor, renderer
-from export.exporter import Exporter
-from export.formats import ExportFormat
+from ..config.settings import Settings
+from ..pdf import extractor, renderer
+from ..export.exporter import Exporter
+from ..export.formats import ExportFormat
 from .ui_builder import UIBuilder
 from .settings_window import SettingsWindow
+from .tooltip import Tooltip
 
-class MainWindow:
-    """アプリケーションのメインウィンドウとUIロジックを管理するクラス。"""
+class MainWindow(tk.Tk):
+    """アプリケーションのメインウィンドウとUIロジックを管理するクラス。
+    """
 
-    def __init__(self, root):
-        """MainWindowを初期化します。
+    def __init__(self):
+        """MainWindowオブジェクトを初期化します。
 
-        Args:
-            root (tk.Tk): Tkinterのルートウィンドウ。
+        ウィンドウのタイトル、サイズ、スタイル、状態変数、UIの構築など、
+        アプリケーションの起動に必要な初期設定をすべて行います。
         """
-        self.root = root
-        self.root.title("PDF Highlight Viewer")
-        self.root.geometry("1200x800")
+        super().__init__()
+        self.title("PDF Highlight Viewer")
+        self.geometry("1200x800")
+        
+        self.settings = Settings()
+
+        # --- スタイルとフォントの設定 ---
+        default_font_family = 'Yu Gothic UI' 
+        # フォントが存在しない場合に備えてフォールバックを設定
+        available_fonts = font.families()
+        if default_font_family not in available_fonts:
+            default_font_family = 'TkDefaultFont'
+
+        # ttkウィジェットのデフォルトフォントを設定
+        style = ttk.Style()
+        style.configure('.', font=(default_font_family, self.settings.font_size))
+        
+        # 標準tkウィジェットのデフォルトフォントを設定 (Listbox, Menuなど)
+        self.option_add('*Font', (default_font_family, self.settings.font_size))
 
         # --- 状態変数 ---
         self.doc: Optional[fitz.Document] = None
-        self.current_filepath: Optional[str] = None
-        self.filepath_var = tk.StringVar() # UIのEntryウィジェットと連動
+        self.file_path_var = tk.StringVar()
         self.highlights = []
-        self.page_images = []
+        self.page_images = {}
         self.current_page_num = -1
-        self.current_highlight_rect = None
         self.scale = 1.0
-        self.app_settings = AppSettings()
         self.export_format = tk.StringVar(value=ExportFormat.PNG.value)
-        self.extraction_mode = tk.StringVar(value="highlight")  # "highlight", "text", "keyword"
-        self.keyword_var = tk.StringVar(value="")
 
-        # UIの構築をUIBuilderに委譲
-        self.ui = UIBuilder(self.root, self)
-        self.ui.setup()
+        # UIの構築と機能の割り当て
+        self.builder = UIBuilder(self)
+        self._bind_widgets()
 
-        self._apply_styles()
+        # 抽出ボタンにツールチップを設定
+        self.extract_button_tooltip = Tooltip(
+            self.builder.btn_extract, "抽出条件を1つ以上選択してください"
+        )
+        self.update_extract_button_state()
 
-    def _apply_styles(self):
-        """設定ファイルに基づいてUIのスタイル（フォントサイズなど）を適用します。"""
-        font_size = self.app_settings.font_size
-        default_font = ("TkDefaultFont", font_size)
-        
-        style = ttk.Style()
-        style.configure(".", font=default_font)
-        
-        self.ui.listbox.config(font=default_font)
-        self.ui.scale_label.config(font=default_font)
+    def _bind_widgets(self):
+        """UIウィジェットにイベントハンドラや変数を割り当てます。
+
+        UIBuilderによって作成されたメニュー項目、ボタン、リストボックスなどの
+        ウィジェットに、実行するコマンドや関連付ける変数を設定します。
+
+        Note:
+            この関数は内部利用を想定しています。
+        """
+        # --- メニュー ---
+        self.builder.file_menu.add_command(label="PDFファイルを選択...", command=self.select_pdf_file)
+        self.builder.file_menu.add_command(label="抽出を実行", command=self.run_extraction)
+        self.builder.file_menu.add_command(label="設定...", command=self.open_settings_window)
+        self.builder.file_menu.add_separator()
+        self.builder.file_menu.add_command(label="終了", command=self.quit)
+
+        for fmt in ExportFormat:
+            self.builder.format_menu.add_radiobutton(
+                label=fmt.value, variable=self.export_format, value=fmt.value)
+
+        self.builder.export_menu.add_separator()
+        self.builder.export_menu.add_command(label="選択中の領域をエクスポート...", command=self.export_selected)
+        self.builder.export_menu.add_command(label="すべての領域をエクスポート...", command=self.export_all)
+
+        # --- トップフレームのウィジェット ---
+        self.builder.btn_extract.config(command=self.run_extraction)
+        self.builder.btn_browse.config(command=self.select_pdf_file)
+        self.builder.entry_filepath.config(textvariable=self.file_path_var)
+
+        # --- リストボックス ---
+        self.builder.listbox.bind("<<ListboxSelect>>", self.on_highlight_selected)
+
+        # --- ズームボタン ---
+        self.builder.zoom_in_btn.config(command=self.zoom_in)
+        self.builder.zoom_out_btn.config(command=self.zoom_out)
 
     def select_pdf_file(self):
-        """ファイルダイアログを開き、処理対象のPDFファイルを選択します。"""
+        """ファイル選択ダイアログを表示し、ユーザーが選択したPDFを読み込みます。
+
+        ユーザーがファイルを選択すると、そのファイルのパスをUIに表示し、
+        自動的に抽出処理を開始します。
+        """
         filepath = filedialog.askopenfilename(
             title="PDFファイルを選択",
             filetypes=[("PDF files", "*.pdf")]
         )
-        if not filepath:
-            return
-
-        # 新しいファイルが選択されたので、現在の表示をリセット
-        self._reset_state()
-        self.root.update_idletasks() # リセットをUIに即時反映
-        self.filepath_var.set(filepath)
-
+        if filepath:
+            self.file_path_var.set(filepath)
+            self.run_extraction()
 
     def run_extraction(self):
-        """現在選択されているPDFファイルに対して抽出処理を実行します。"""
-        self.current_filepath = self.filepath_var.get()
-        if not self.current_filepath:
-            messagebox.showwarning("ファイル未選択", "ファイルパスを入力するか、「参照...」ボタンからPDFファイルを選択してください。")
+        """PDFファイルからハイライト領域の抽出処理を実行します。
+
+        現在ファイルパス入力欄に表示されているPDFを読み込み、設定に基づいて
+        ハイライト、文字色、キーワードなどの領域を抽出します。
+        抽出結果はリストボックスに表示されます。
+        """
+        self.current_page_num = -1
+        filepath = self.file_path_var.get()
+        if not filepath:
+            messagebox.showwarning("警告", "PDFファイルが選択されていません。")
             return
 
-        # 抽出の都度、前回の結果をクリアし、UIに即時反映
-        self._reset_state()
-        self.root.update_idletasks()
+        # 既存のハイライト描画をクリア
+        self.builder.canvas.delete("highlight_rect")
 
         try:
-            self.doc = fitz.open(self.current_filepath)
+            self.doc = fitz.open(filepath)
+            self.builder.status_bar.config(text=f"処理中: {filepath}")
+            self.update()
 
-            mode = self.extraction_mode.get()
-            if mode == "highlight":
-                self.highlights = extractor.extract_colored_regions(self.doc, self.app_settings)
-            elif mode == "text":
-                self.highlights = extractor.extract_colored_text_regions(self.doc, self.app_settings)
-            elif mode == "keyword":
-                keyword = self.keyword_var.get()
-                if not keyword:
-                    messagebox.showwarning("キーワード未入力", "キーワードが入力されていません。メニューの「ファイル」>「設定...」からキーワードを入力してください。")
-                    self.highlights = []
-                else:
-                    self.highlights = extractor.extract_keyword_regions(self.doc, keyword)
-            else:
-                self.highlights = []
-                messagebox.showerror("内部エラー", f"不明な抽出モードです: {mode}")
+            self.highlights = extractor.extract_regions(self.doc, self.settings)
+            self.highlights.sort(key=lambda h: (h.page_num, h.rect.y0))
+
+            self.page_images.clear()
+            self.builder.listbox.delete(0, tk.END)
 
             if not self.highlights:
-                messagebox.showinfo("抽出結果", "指定された条件に一致する領域は見つかりませんでした。")
+                messagebox.showinfo("情報", "指定された条件に一致する項目は見つかりませんでした。")
+                if self.doc and self.doc.page_count > 0:
+                    self.display_page(0)
+                else:
+                    self.builder.canvas.delete("all")
+            else:
+                for i, highlight in enumerate(self.highlights):
+                    self.builder.listbox.insert(tk.END, f"項目 {i+1} (Page {highlight.page_num + 1})")
+                self.builder.listbox.select_set(0)
 
-            self._populate_listbox()
-            
-            # ページを表示
-            if self.doc.page_count > 0:
-                # 最初のハイライトがあればそのページを表示
-                if self.highlights:
-                    self.show_page(self.highlights[0][0])
+            self.builder.status_bar.config(text="準備完了")
 
         except Exception as e:
-            messagebox.showerror("エラー", f"PDFの処理中にエラーが発生しました:\n{e}")
-            self.filepath_var.set(f"エラー: {e}")
+            messagebox.showerror("エラー", f"ファイルの処理中にエラーが発生しました: {e}")
+            self.builder.status_bar.config(text="エラー")
 
+    def on_highlight_selected(self, event):
+        """リストボックスで項目が選択されたときに呼び出されるイベントハンドラ。
 
-    def _reset_state(self):
-        """抽出結果やプレビューなど、アプリケーションの状態をリセットします。"""
-        self.ui.listbox.delete(0, tk.END)
-        self.highlights = []
-        self.page_images = []
-        self.current_page_num = -1
-        self.current_highlight_rect = None
-        self.scale = 1.0
-        if self.doc:
-            self.doc.close()
-            self.doc = None
-        # self.current_filepath, self.filepath_var はここではリセットしない
+        選択されたハイライト項目に対応するPDFのページを表示し、
+        該当箇所に赤枠を描画してスクロールします。
 
-    def _populate_listbox(self):
-        """検出した領域のリストをリストボックスに表示します。"""
-        self.ui.listbox.delete(0, tk.END)
-        for i, (page_num, rect) in enumerate(self.highlights):
-            self.ui.listbox.insert(tk.END, f"領域 {i + 1} (Page {page_num + 1})")
-
-    def on_list_select(self, event):
-        """リストボックスの項目が選択されたときに呼び出されるイベントハンドラです。"""
-        selection_indices = self.ui.listbox.curselection()
-        if not selection_indices:
+        Args:
+            event (tk.Event): Tkinterから渡されるイベントオブジェクト。
+        """
+        selected_indices = self.builder.listbox.curselection()
+        if not selected_indices:
             return
+
+        selected_index = selected_indices[0]
         
-        selected_index = selection_indices[0]
+        def _update_display():
+            """描画処理をまとめて実行する内部関数。"""
+            highlight = self.highlights[selected_index]
+
+            if highlight.page_num != self.current_page_num:
+                self.current_page_num = highlight.page_num
+                self.display_page(self.current_page_num)
+            
+            self.draw_highlight_rect(highlight.rect)
+            self.scroll_to_rect(highlight.rect)
+
+        self.after(1, _update_display)
+
+    def display_page(self, page_num):
+        """指定されたページ番号のPDFページをキャンバスに表示します。
+
+        ページの画像がキャッシュにあればそれを使用し、なければ新しく
+        レンダリングして表示します。表示倍率(scale)も考慮されます。
+
+        Args:
+            page_num (int): 表示するページの番号 (0-indexed)。
+        """
+        if self.doc is None:
+            return
+
+        if page_num not in self.page_images:
+            pix = self.doc[page_num].get_pixmap(matrix=fitz.Matrix(self.scale, self.scale))
+            self.page_images[page_num] = tk.PhotoImage(data=pix.tobytes("ppm"))
         
-        if 0 <= selected_index < len(self.highlights):
-            page_num, rect = self.highlights[selected_index]
-            self.current_highlight_rect = rect
-            self.show_page(page_num, highlight_rect=rect)
+        self.builder.canvas.delete("all")
+        self.builder.canvas.create_image(0, 0, anchor=tk.NW, image=self.page_images[page_num])
+        self.builder.canvas.config(scrollregion=self.builder.canvas.bbox("all"))
+        self.builder.scale_label.config(text=f"{self.scale*100:.0f}%")
 
-    def show_page(self, page_num, highlight_rect=None):
-        """指定されたページをキャンバスに表示し、指定領域をハイライトします。"""
-        if not self.doc or not (0 <= page_num < self.doc.page_count):
-            # PDFが開かれていない場合、キャンバスをクリアする
-            self.ui.canvas.delete("all")
-            return
+    def draw_highlight_rect(self, rect):
+        """指定された矩形領域にハイライト用の赤枠を描画します。
 
-        self.current_page_num = page_num
-        page = self.doc[page_num]
-        img, photo = renderer.render_page_to_image(page, scale=self.scale)
-        
-        self.page_images.append(photo)
+        既存の赤枠がある場合は一度削除してから、新しい枠を描画します。
 
-        self.ui.canvas.delete("all")
-        self.ui.canvas.create_image(0, 0, anchor=tk.NW, image=photo)
-        self.ui.canvas.config(scrollregion=self.ui.canvas.bbox(tk.ALL))
+        Args:
+            rect (fitz.Rect): 赤枠を描画する座標。
+        """
+        self.builder.canvas.delete("highlight_rect")
+        self.builder.canvas.create_rectangle(
+            rect.x0 * self.scale, rect.y0 * self.scale,
+            rect.x1 * self.scale, rect.y1 * self.scale,
+            outline="red", width=self.settings.highlight_border_width, tags="highlight_rect"
+        )
 
-        if highlight_rect:
-            self.ui.canvas.create_rectangle(
-                highlight_rect.x0 * self.scale,
-                highlight_rect.y0 * self.scale,
-                highlight_rect.x1 * self.scale,
-                highlight_rect.y1 * self.scale,
-                outline="red",
-                width=self.app_settings.highlight_border_width,
-                tags="highlight"
-            )
-            # スクロール位置の計算と移動
-            canvas_height = self.ui.canvas.winfo_height()
-            page_height = self.ui.canvas.bbox(tk.ALL)[3]
-            if page_height > 0:
-                # ハイライトが中央に来るようにスクロール
-                scroll_pos = (highlight_rect.y0 * self.scale - canvas_height / 2) / page_height
-                self.ui.canvas.yview_moveto(max(0, scroll_pos))
+    def scroll_to_rect(self, rect):
+        """指定された矩形領域がプレビュー画面の中央に来るようにスクロールします。
 
-
-    def _get_export_format_enum(self) -> Optional[ExportFormat]:
-        """現在のエクスポート形式をEnumとして取得します。不正な場合はエラー表示してNoneを返します。"""
-        try:
-            return ExportFormat(self.export_format.get())
-        except ValueError:
-            messagebox.showerror("内部エラー", "不明なエクスポート形式が選択されています。")
-            return None
-
-    def export_selected_highlight(self):
-        """選択されたハイライトのエクスポート処理をExporterに委譲します。"""
-        export_format_enum = self._get_export_format_enum()
-        if not export_format_enum:
-            return
-
-        exporter = Exporter(self.doc, self.highlights, self.ui.listbox, self.app_settings)
-        exporter.export_selected(export_format_enum)
-
-    def export_all_highlights(self):
-        """すべてのハイライトのエクスポート処理をExporterに委譲します。"""
-        export_format_enum = self._get_export_format_enum()
-        if not export_format_enum:
-            return
-
-        exporter = Exporter(self.doc, self.highlights, self.ui.listbox, self.app_settings)
-        exporter.export_all(export_format_enum)
+        Args:
+            rect (fitz.Rect): スクロール先の目標となる座標。
+        """
+        canvas_height = self.builder.canvas.winfo_height()
+        y_pos = rect.y0 * self.scale
+        scroll_region = self.builder.canvas.bbox("all")
+        if scroll_region and scroll_region[3] > 0:
+            total_height = scroll_region[3]
+            scroll_fraction = (y_pos - canvas_height / 2) / total_height
+            self.builder.canvas.yview_moveto(max(0, scroll_fraction))
 
     def open_settings_window(self):
-        """設定ウィンドウを開きます。"""
-        SettingsWindow(self.root, self)
+        """抽出条件などを変更するための設定ウィンドウを開きます。
+        """
+        SettingsWindow(self, self.settings)
 
-    def zoom_in(self):
-        """表示倍率を上げて再描画します。"""
-        if not self.doc: return
-        if self.scale >= 5.0: # 500%を上限とする
+    def export_selected(self):
+        """現在選択中のハイライト領域を指定された形式でエクスポートします。
+        """
+        try:
+            format_str = self.export_format.get()
+            export_format = ExportFormat(format_str)
+        except ValueError:
+            messagebox.showerror("内部エラー", f"不明なエクスポート形式です: {format_str}")
             return
+
+        exporter = Exporter(
+            doc=self.doc,
+            highlights=self.highlights,
+            app_settings=self.settings
+        )
+        exporter.export_selected(export_format=export_format, listbox=self.builder.listbox)
+
+    def export_all(self):
+        """抽出されたすべてのハイライト領域を指定された形式でエクスポートします。
+        """
+        try:
+            format_str = self.export_format.get()
+            export_format = ExportFormat(format_str)
+        except ValueError:
+            messagebox.showerror("内部エラー", f"不明なエクスポート形式です: {format_str}")
+            return
+            
+        exporter = Exporter(
+            doc=self.doc,
+            highlights=self.highlights,
+            app_settings=self.settings
+        )
+        exporter.export_all(export_format=export_format)
+        
+    def zoom_in(self):
+        """PDFプレビューの表示倍率を上げて再描画します。
+        """
+        if not self.doc or self.current_page_num == -1: return
+        if self.scale >= 5.0: return
         self.scale += 0.1
-        # 浮動小数点数の誤差を考慮し、上限を超えた場合は500%に設定
-        if self.scale > 5.0:
-            self.scale = 5.0
-        self.ui.scale_label.config(text=f"{self.scale*100:.0f}%")
-        self.show_page(self.current_page_num, highlight_rect=self.current_highlight_rect)
+        self.page_images.clear()
+        self.display_page(self.current_page_num)
+        if self.highlights and self.builder.listbox.curselection():
+            self.draw_highlight_rect(self.highlights[self.builder.listbox.curselection()[0]].rect)
 
     def zoom_out(self):
-        """表示倍率を下げて再描画します。"""
-        if not self.doc: return
-        if self.scale > 0.2:
-            self.scale -= 0.1
-            self.ui.scale_label.config(text=f"{self.scale*100:.0f}%")
-            self.show_page(self.current_page_num, highlight_rect=self.current_highlight_rect)
+        """PDFプレビューの表示倍率を下げて再描画します。
+        """
+        if not self.doc or self.current_page_num == -1: return
+        if self.scale <= 0.2: return
+        self.scale -= 0.1
+        self.page_images.clear()
+        self.display_page(self.current_page_num)
+        if self.highlights and self.builder.listbox.curselection():
+            self.draw_highlight_rect(self.highlights[self.builder.listbox.curselection()[0]].rect)
+
+    def update_extract_button_state(self):
+        """抽出ボタンの有効/無効状態を、現在の抽出条件に応じて更新します。
+
+        抽出条件が1つも選択されていない場合はボタンを無効化し、
+        ツールチップでその旨をユーザーに伝えます。
+        """
+        is_any_condition_selected = (
+            self.settings.extract_highlights or
+            self.settings.extract_text_color or
+            self.settings.extract_keyword
+        )
+
+        if is_any_condition_selected:
+            self.builder.btn_extract.config(state=tk.NORMAL)
+            self.extract_button_tooltip.disable()
+        else:
+            self.builder.btn_extract.config(state=tk.DISABLED)
+            self.extract_button_tooltip.enable()
+
+if __name__ == '__main__':
+    app = MainWindow()
+    app.mainloop()
