@@ -14,7 +14,7 @@ class SettingsWindow(tk.Toplevel):
         super().__init__(parent)
         self.parent = parent
         self.settings = settings
-        self.title("設定")
+        self.title("抽出条件設定")
         self.geometry("350x200")
         self.transient(parent)
         self.grab_set()

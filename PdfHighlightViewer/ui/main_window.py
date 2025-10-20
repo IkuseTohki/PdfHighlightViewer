@@ -73,7 +73,7 @@ class MainWindow(tk.Tk):
         # --- メニュー ---
         self.builder.widgets.file_menu.add_command(label="PDFファイルを選択...", command=self.select_pdf_file)
         self.builder.widgets.file_menu.add_command(label="抽出を実行", command=self.run_extraction)
-        self.builder.widgets.file_menu.add_command(label="設定...", command=self.open_settings_window)
+        self.builder.widgets.file_menu.add_command(label="抽出条件設定...", command=self.open_settings_window)
         self.builder.widgets.file_menu.add_separator()
         self.builder.widgets.file_menu.add_command(label="終了", command=self.quit)
 
