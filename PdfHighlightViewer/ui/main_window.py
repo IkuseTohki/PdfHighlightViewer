@@ -56,7 +56,7 @@ class MainWindow(tk.Tk):
 
         # 抽出ボタンにツールチップを設定
         self.extract_button_tooltip = Tooltip(
-            self.builder.btn_extract, "抽出条件を1つ以上選択してください"
+            self.builder.widgets.btn_extract, "抽出条件を1つ以上選択してください"
         )
         self.update_extract_button_state()
 
@@ -70,31 +70,31 @@ class MainWindow(tk.Tk):
             この関数は内部利用を想定しています。
         """
         # --- メニュー ---
-        self.builder.file_menu.add_command(label="PDFファイルを選択...", command=self.select_pdf_file)
-        self.builder.file_menu.add_command(label="抽出を実行", command=self.run_extraction)
-        self.builder.file_menu.add_command(label="設定...", command=self.open_settings_window)
-        self.builder.file_menu.add_separator()
-        self.builder.file_menu.add_command(label="終了", command=self.quit)
+        self.builder.widgets.file_menu.add_command(label="PDFファイルを選択...", command=self.select_pdf_file)
+        self.builder.widgets.file_menu.add_command(label="抽出を実行", command=self.run_extraction)
+        self.builder.widgets.file_menu.add_command(label="設定...", command=self.open_settings_window)
+        self.builder.widgets.file_menu.add_separator()
+        self.builder.widgets.file_menu.add_command(label="終了", command=self.quit)
 
         for fmt in ExportFormat:
-            self.builder.format_menu.add_radiobutton(
+            self.builder.widgets.format_menu.add_radiobutton(
                 label=fmt.value, variable=self.export_format, value=fmt.value)
 
-        self.builder.export_menu.add_separator()
-        self.builder.export_menu.add_command(label="選択中の領域をエクスポート...", command=self.export_selected)
-        self.builder.export_menu.add_command(label="すべての領域をエクスポート...", command=self.export_all)
+        self.builder.widgets.export_menu.add_separator()
+        self.builder.widgets.export_menu.add_command(label="選択中の領域をエクスポート...", command=self.export_selected)
+        self.builder.widgets.export_menu.add_command(label="すべての領域をエクスポート...", command=self.export_all)
 
         # --- トップフレームのウィジェット ---
-        self.builder.btn_extract.config(command=self.run_extraction)
-        self.builder.btn_browse.config(command=self.select_pdf_file)
-        self.builder.entry_filepath.config(textvariable=self.file_path_var)
+        self.builder.widgets.btn_extract.config(command=self.run_extraction)
+        self.builder.widgets.btn_browse.config(command=self.select_pdf_file)
+        self.builder.widgets.entry_filepath.config(textvariable=self.file_path_var)
 
         # --- リストボックス ---
-        self.builder.listbox.bind("<<ListboxSelect>>", self.on_highlight_selected)
+        self.builder.widgets.listbox.bind("<<ListboxSelect>>", self.on_highlight_selected)
 
         # --- ズームボタン ---
-        self.builder.zoom_in_btn.config(command=self.zoom_in)
-        self.builder.zoom_out_btn.config(command=self.zoom_out)
+        self.builder.widgets.zoom_in_btn.config(command=self.zoom_in)
+        self.builder.widgets.zoom_out_btn.config(command=self.zoom_out)
 
     def select_pdf_file(self):
         """ファイル選択ダイアログを表示し、ユーザーが選択したPDFを読み込みます。
@@ -124,35 +124,35 @@ class MainWindow(tk.Tk):
             return
 
         # 既存のハイライト描画をクリア
-        self.builder.canvas.delete("highlight_rect")
+        self.builder.widgets.canvas.delete("highlight_rect")
 
         try:
             self.doc = fitz.open(filepath)
-            self.builder.status_bar.config(text=f"処理中: {filepath}")
+            self.builder.widgets.status_bar.config(text=f"処理中: {filepath}")
             self.update()
 
             self.highlights = extractor.extract_regions(self.doc, self.settings)
             self.highlights.sort(key=lambda h: (h.page_num, h.rect.y0))
 
             self.page_images.clear()
-            self.builder.listbox.delete(0, tk.END)
+            self.builder.widgets.listbox.delete(0, tk.END)
 
             if not self.highlights:
                 messagebox.showinfo("情報", "指定された条件に一致する項目は見つかりませんでした。")
                 if self.doc and self.doc.page_count > 0:
                     self.display_page(0)
                 else:
-                    self.builder.canvas.delete("all")
+                    self.builder.widgets.canvas.delete("all")
             else:
                 for i, highlight in enumerate(self.highlights):
-                    self.builder.listbox.insert(tk.END, f"項目 {i+1} (Page {highlight.page_num + 1})")
-                self.builder.listbox.select_set(0)
+                    self.builder.widgets.listbox.insert(tk.END, f"項目 {i+1} (Page {highlight.page_num + 1})")
+                self.builder.widgets.listbox.select_set(0)
 
-            self.builder.status_bar.config(text="準備完了")
+            self.builder.widgets.status_bar.config(text="準備完了")
 
         except Exception as e:
             messagebox.showerror("エラー", f"ファイルの処理中にエラーが発生しました: {e}")
-            self.builder.status_bar.config(text="エラー")
+            self.builder.widgets.status_bar.config(text="エラー")
 
     def on_highlight_selected(self, event):
         """リストボックスで項目が選択されたときに呼び出されるイベントハンドラ。
@@ -163,7 +163,7 @@ class MainWindow(tk.Tk):
         Args:
             event (tk.Event): Tkinterから渡されるイベントオブジェクト。
         """
-        selected_indices = self.builder.listbox.curselection()
+        selected_indices = self.builder.widgets.listbox.curselection()
         if not selected_indices:
             return
 
@@ -198,10 +198,10 @@ class MainWindow(tk.Tk):
             pix = self.doc[page_num].get_pixmap(matrix=fitz.Matrix(self.scale, self.scale))
             self.page_images[page_num] = tk.PhotoImage(data=pix.tobytes("ppm"))
         
-        self.builder.canvas.delete("all")
-        self.builder.canvas.create_image(0, 0, anchor=tk.NW, image=self.page_images[page_num])
-        self.builder.canvas.config(scrollregion=self.builder.canvas.bbox("all"))
-        self.builder.scale_label.config(text=f"{self.scale*100:.0f}%")
+        self.builder.widgets.canvas.delete("all")
+        self.builder.widgets.canvas.create_image(0, 0, anchor=tk.NW, image=self.page_images[page_num])
+        self.builder.widgets.canvas.config(scrollregion=self.builder.widgets.canvas.bbox("all"))
+        self.builder.widgets.scale_label.config(text=f"{self.scale*100:.0f}%")
 
     def draw_highlight_rect(self, rect):
         """指定された矩形領域にハイライト用の赤枠を描画します。
@@ -211,8 +211,8 @@ class MainWindow(tk.Tk):
         Args:
             rect (fitz.Rect): 赤枠を描画する座標。
         """
-        self.builder.canvas.delete("highlight_rect")
-        self.builder.canvas.create_rectangle(
+        self.builder.widgets.canvas.delete("highlight_rect")
+        self.builder.widgets.canvas.create_rectangle(
             rect.x0 * self.scale, rect.y0 * self.scale,
             rect.x1 * self.scale, rect.y1 * self.scale,
             outline="red", width=self.settings.highlight_border_width, tags="highlight_rect"
@@ -224,13 +224,13 @@ class MainWindow(tk.Tk):
         Args:
             rect (fitz.Rect): スクロール先の目標となる座標。
         """
-        canvas_height = self.builder.canvas.winfo_height()
+        canvas_height = self.builder.widgets.canvas.winfo_height()
         y_pos = rect.y0 * self.scale
-        scroll_region = self.builder.canvas.bbox("all")
+        scroll_region = self.builder.widgets.canvas.bbox("all")
         if scroll_region and scroll_region[3] > 0:
             total_height = scroll_region[3]
             scroll_fraction = (y_pos - canvas_height / 2) / total_height
-            self.builder.canvas.yview_moveto(max(0, scroll_fraction))
+            self.builder.widgets.canvas.yview_moveto(max(0, scroll_fraction))
 
     def open_settings_window(self):
         """抽出条件などを変更するための設定ウィンドウを開きます。
@@ -252,7 +252,7 @@ class MainWindow(tk.Tk):
             highlights=self.highlights,
             app_settings=self.settings
         )
-        exporter.export_selected(export_format=export_format, listbox=self.builder.listbox)
+        exporter.export_selected(export_format=export_format, listbox=self.builder.widgets.listbox)
 
     def export_all(self):
         """抽出されたすべてのハイライト領域を指定された形式でエクスポートします。
@@ -279,8 +279,8 @@ class MainWindow(tk.Tk):
         self.scale += 0.1
         self.page_images.clear()
         self.display_page(self.current_page_num)
-        if self.highlights and self.builder.listbox.curselection():
-            self.draw_highlight_rect(self.highlights[self.builder.listbox.curselection()[0]].rect)
+        if self.highlights and self.builder.widgets.listbox.curselection():
+            self.draw_highlight_rect(self.highlights[self.builder.widgets.listbox.curselection()[0]].rect)
 
     def zoom_out(self):
         """PDFプレビューの表示倍率を下げて再描画します。
@@ -290,8 +290,8 @@ class MainWindow(tk.Tk):
         self.scale -= 0.1
         self.page_images.clear()
         self.display_page(self.current_page_num)
-        if self.highlights and self.builder.listbox.curselection():
-            self.draw_highlight_rect(self.highlights[self.builder.listbox.curselection()[0]].rect)
+        if self.highlights and self.builder.widgets.listbox.curselection():
+            self.draw_highlight_rect(self.highlights[self.builder.widgets.listbox.curselection()[0]].rect)
 
     def update_extract_button_state(self):
         """抽出ボタンの有効/無効状態を、現在の抽出条件に応じて更新します。
@@ -306,10 +306,10 @@ class MainWindow(tk.Tk):
         )
 
         if is_any_condition_selected:
-            self.builder.btn_extract.config(state=tk.NORMAL)
+            self.builder.widgets.btn_extract.config(state=tk.NORMAL)
             self.extract_button_tooltip.disable()
         else:
-            self.builder.btn_extract.config(state=tk.DISABLED)
+            self.builder.widgets.btn_extract.config(state=tk.DISABLED)
             self.extract_button_tooltip.enable()
 
 if __name__ == '__main__':
