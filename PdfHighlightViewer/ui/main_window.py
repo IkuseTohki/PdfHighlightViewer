@@ -49,6 +49,7 @@ class MainWindow(tk.Tk):
         self.current_page_num = -1
         self.scale = 1.0
         self.export_format = tk.StringVar(value=ExportFormat.PNG.value)
+        self.platform = self.tk.call('tk', 'windowingsystem')
 
         # UIの構築と機能の割り当て
         self.builder = UIBuilder(self)
@@ -95,6 +96,15 @@ class MainWindow(tk.Tk):
         # --- ズームボタン ---
         self.builder.widgets.zoom_in_btn.config(command=self.zoom_in)
         self.builder.widgets.zoom_out_btn.config(command=self.zoom_out)
+
+        # --- キャンバスのスクロールイベント ---
+        canvas = self.builder.widgets.canvas
+        canvas.bind("<MouseWheel>", self._on_vertical_scroll)
+        canvas.bind("<Shift-MouseWheel>", self._on_horizontal_scroll)
+        canvas.bind("<Button-4>", self._on_vertical_scroll) # for Linux
+        canvas.bind("<Button-5>", self._on_vertical_scroll) # for Linux
+        # Linuxでの水平スクロール(Shift+Button-4/5)は環境依存性が高いため、
+        # 一般的なShift+MouseWheelでカバーします。
 
     def select_pdf_file(self):
         """ファイル選択ダイアログを表示し、ユーザーが選択したPDFを読み込みます。
@@ -311,6 +321,44 @@ class MainWindow(tk.Tk):
         else:
             self.builder.widgets.btn_extract.config(state=tk.DISABLED)
             self.extract_button_tooltip.enable()
+
+    def _on_vertical_scroll(self, event):
+        """キャンバスの垂直スクロールをマウスホイールと連動させます。
+
+        プラットフォーム間のイベントの違いを吸収します。
+
+        Args:
+            event (tk.Event): マウスホイールイベント。
+        """
+        if self.platform == "win32":
+            self.builder.widgets.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        elif self.platform == "x11": # Linux
+            if event.num == 4:
+                self.builder.widgets.canvas.yview_scroll(-1, "units")
+            elif event.num == 5:
+                self.builder.widgets.canvas.yview_scroll(1, "units")
+        else: # macOS
+            self.builder.widgets.canvas.yview_scroll(int(-1 * event.delta), "units")
+
+    def _on_horizontal_scroll(self, event):
+        """キャンバスの水平スクロールをShift+マウスホイールと連動させます。
+
+        プラットフォーム間のイベントの違いを吸収します。
+
+        Args:
+            event (tk.Event): マウスホイールイベント。
+        """
+        if self.platform == "win32":
+            self.builder.widgets.canvas.xview_scroll(int(-1 * (event.delta / 120)), "units")
+        elif self.platform == "x11": # Linux (Shift+Button-4/5)
+             # Linuxの水平スクロールは環境差が大きいため、ここでは基本的な実装に留めます
+            if event.num == 4:
+                self.builder.widgets.canvas.xview_scroll(-1, "units")
+            elif event.num == 5:
+                self.builder.widgets.canvas.xview_scroll(1, "units")
+        else: # macOS
+            self.builder.widgets.canvas.xview_scroll(int(-1 * event.delta), "units")
+
 
 if __name__ == '__main__':
     app = MainWindow()
