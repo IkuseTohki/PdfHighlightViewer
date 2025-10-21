@@ -1,6 +1,8 @@
 import configparser
 import os
 
+from ..export.formats import PdfExportMode
+
 class Settings:
     """
     設定を管理するシングルトンクラス。
@@ -53,7 +55,7 @@ class Settings:
         self.extraction_keyword = ""
 
         # エクスポート設定
-        self.pdf_export_mode = "one_page"
+        self.pdf_export_mode = PdfExportMode.ONE_PAGE.value
         self.excel_image_scale = 2.0
         self.image_export_border_width = 5
         self.pdf_export_border_width = 1.5
@@ -93,7 +95,7 @@ class Settings:
         self.extraction_keyword = self.config.get('Extraction', 'Keyword', fallback="")
 
         # エクスポート設定
-        self.pdf_export_mode = self.config.get('Export', 'PdfExportMode', fallback='one_page')
+        self.pdf_export_mode = self.config.get('Export', 'PdfExportMode', fallback=PdfExportMode.ONE_PAGE.value)
         self.excel_image_scale = self.config.getfloat('Export', 'ExcelImageScale', fallback=2.0)
         self.image_export_border_width = self.config.getint('Export', 'ImageExportBorderWidth', fallback=5)
         self.pdf_export_border_width = self.config.getfloat('Export', 'PdfExportBorderWidth', fallback=1.5)

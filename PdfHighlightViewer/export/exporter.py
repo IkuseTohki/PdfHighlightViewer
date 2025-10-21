@@ -11,7 +11,7 @@ import io
 import openpyxl
 from openpyxl.drawing.image import Image as OpenpyxlImage
 
-from .formats import ExportFormat
+from .formats import ExportFormat, PdfExportMode
 
 class Exporter:
     """エクスポート処理を実行するクラス。"""
@@ -203,7 +203,7 @@ class Exporter:
             return
         final_doc = fitz.open()
         try:
-            if self.app_settings.pdf_export_mode == 'one_page':
+            if self.app_settings.pdf_export_mode == PdfExportMode.ONE_PAGE.value:
                 for highlight in self.highlights:
                     page_num = highlight.page_num
                     rect = highlight.rect
@@ -213,7 +213,7 @@ class Exporter:
                     new_page.draw_rect(rect, color=(1, 0, 0), width=self.app_settings.pdf_export_border_width)
                     final_doc.insert_pdf(temp_doc)
                     temp_doc.close()
-            elif self.app_settings.pdf_export_mode == 'merge':
+            elif self.app_settings.pdf_export_mode == PdfExportMode.MERGE.value:
                 highlights_by_page = defaultdict(list)
                 for highlight in self.highlights:
                     highlights_by_page[highlight.page_num].append(highlight.rect)

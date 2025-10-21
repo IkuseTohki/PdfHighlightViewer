@@ -9,6 +9,7 @@ from ..export.exporter import Exporter
 from ..export.formats import ExportFormat
 from .ui_builder import UIBuilder
 from .settings_window import SettingsWindow
+from .app_settings_window import AppSettingsWindow
 from .tooltip import Tooltip
 
 class MainWindow(tk.Tk):
@@ -74,6 +75,7 @@ class MainWindow(tk.Tk):
         self.builder.widgets.file_menu.add_command(label="PDFファイルを選択...", command=self.select_pdf_file)
         self.builder.widgets.file_menu.add_command(label="抽出を実行", command=self.run_extraction)
         self.builder.widgets.file_menu.add_command(label="抽出条件設定...", command=self.open_settings_window)
+        self.builder.widgets.file_menu.add_command(label="アプリケーション設定...", command=self.open_app_settings_window)
         self.builder.widgets.file_menu.add_separator()
         self.builder.widgets.file_menu.add_command(label="終了", command=self.quit)
 
@@ -358,6 +360,11 @@ class MainWindow(tk.Tk):
                 self.builder.widgets.canvas.xview_scroll(1, "units")
         else: # macOS
             self.builder.widgets.canvas.xview_scroll(int(-1 * event.delta), "units")
+
+    def open_app_settings_window(self):
+        """アプリケーション全体の設定ウィンドウを開きます。
+        """
+        AppSettingsWindow(self, self.settings)
 
 
 if __name__ == '__main__':
