@@ -258,7 +258,7 @@ class Exporter:
             return
         try:
             wb = openpyxl.Workbook()
-            ws = wb.active()
+            ws = wb.active
             ws.title = "Highlight"
             ws.append(["No", "ページ画像", "ページ番号", "テキスト"])
             highlight = self.highlights[selected_index]
@@ -305,7 +305,7 @@ class Exporter:
             return
         try:
             wb = openpyxl.Workbook()
-            ws = wb.active()
+            ws = wb.active
             ws.title = "Highlights"
             ws.append(["No", "ページ画像", "ページ番号", "テキスト"])
             highlights_by_page = defaultdict(list)
